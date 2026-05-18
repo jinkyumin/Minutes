@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
+    "build": "vite build",
     "test": "node test/run-tests.js"
+  },
+  "devDependencies": {
+    "vite": "^7.1.2"
   }
 }
