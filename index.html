@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>회의록 전사 및 요약</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Meeting Minutes</p>
+          <h1>회의 음성 전사와 종료 요약</h1>
+          <p class="lead">
+            회의를 시작하면 브라우저가 마이크 음성을 실시간으로 전사하고, 종료 시
+            핵심 내용과 할 일을 로컬에서 정리합니다.
+          </p>
+        </div>
+        <div class="status-strip" aria-live="polite">
+          <div class="metric">
+            <span>상태</span>
+            <strong id="status">대기 중</strong>
+          </div>
+          <div class="metric">
+            <span>진행 시간</span>
+            <strong id="meetingDuration">00:00</strong>
+          </div>
+        </div>
+      </header>
+
+      <section id="supportNotice" class="notice" hidden>
+        이 브라우저는 실시간 음성 인식을 지원하지 않습니다. Chrome 또는 Edge에서
+        실행해 주세요.
+      </section>
+
+      <section class="workspace">
+        <article class="panel">
+          <section class="metadata-panel" aria-label="회의 기본 정보">
+            <div class="field-group">
+              <label for="meetingDateTime">회의 일시</label>
+              <input id="meetingDateTime" type="datetime-local" />
+            </div>
+            <div class="field-group">
+              <label for="attendees">참석자</label>
+              <textarea
+                id="attendees"
+                rows="2"
+                placeholder="예: 김민수, 이지연"
+              ></textarea>
+            </div>
+            <div class="field-group">
+              <label for="notes">비고</label>
+              <textarea
+                id="notes"
+                rows="3"
+                placeholder="회의 전후 참고할 내용을 입력하세요."
+              ></textarea>
+            </div>
+          </section>
+
+          <div class="panel-header">
+            <h2>실시간 전사</h2>
+            <span id="transcriptCount">0개 문장</span>
+          </div>
+
+          <div class="controls" aria-label="회의 제어">
+            <button id="startButton" class="primary" type="button">회의 시작</button>
+            <button id="pauseButton" type="button" disabled>일시정지</button>
+            <button id="endButton" class="danger" type="button" disabled>회의 종료</button>
+          </div>
+
+          <div class="live-box" aria-live="polite">
+            <span class="live-label">현재 인식 중</span>
+            <p id="liveText">회의를 시작하면 실시간 전사가 여기에 표시됩니다.</p>
+          </div>
+
+          <div class="panel-header">
+            <h3>회의록</h3>
+            <div class="ghost-actions">
+              <button id="copyTranscriptButton" type="button">전사 복사</button>
+              <button id="resetButton" type="button">초기화</button>
+            </div>
+          </div>
+
+          <ol id="transcriptList" class="transcript-list">
+            <li class="empty-state">아직 확정된 전사 문장이 없습니다.</li>
+          </ol>
+        </article>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>종료 요약</h2>
+            <div class="ghost-actions">
+              <button id="copySummaryButton" type="button">요약 복사</button>
+            </div>
+          </div>
+
+          <section class="summary-section">
+            <h3>개요</h3>
+            <p id="summaryOverview" class="summary-overview">
+              회의 종료 후 요약이 표시됩니다.
+            </p>
+          </section>
+
+          <section class="summary-section">
+            <h3>핵심 내용</h3>
+            <ul id="keyPoints" class="summary-list">
+              <li class="empty-state">회의 종료 후 핵심 내용이 표시됩니다.</li>
+            </ul>
+          </section>
+
+          <section class="summary-section">
+            <h3>할 일</h3>
+            <ul id="actionItems" class="summary-list">
+              <li class="empty-state">회의 종료 후 할 일이 표시됩니다.</li>
+            </ul>
+          </section>
+
+          <section class="summary-section">
+            <div class="panel-header compact">
+              <h2>이전 회의록</h2>
+              <span id="historyCount">0건</span>
+            </div>
+            <ol id="historyList" class="history-list">
+              <li class="empty-state">저장된 회의록이 없습니다.</li>
+            </ol>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
