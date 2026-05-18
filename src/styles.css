@@ -129,9 +129,37 @@ h1 {
   font-weight: 700;
 }
 
+.view-tabs {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  border: 1px solid #dbe1e7;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 4px;
+}
+
+.view-tabs button {
+  min-height: 36px;
+  border-color: transparent;
+  padding: 0 14px;
+  color: #50606c;
+}
+
+.view-tabs button.active {
+  background: #1f6f8b;
+  color: #ffffff;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 18px;
+}
+
+.list-page {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
   gap: 18px;
 }
 
@@ -318,10 +346,60 @@ h1 {
   text-align: left;
 }
 
+.history-list button.selected {
+  border-color: #1f6f8b;
+  background: #eef7fb;
+}
+
 .history-list strong,
 .history-list span,
 .history-list p {
   display: block;
+}
+
+.record-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.detail-metadata {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  border: 1px solid #e3e8ed;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px;
+}
+
+.detail-metadata dt {
+  color: #4d5a65;
+  font-weight: 900;
+}
+
+.detail-metadata dd {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.detail-section {
+  border-top: 1px solid #e6ebef;
+  padding-top: 14px;
+}
+
+.detail-section h3 {
+  margin-bottom: 8px;
+  color: #35424d;
+  font-size: 0.95rem;
+}
+
+.detail-section ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.55;
 }
 
 .history-list span {
@@ -341,7 +419,8 @@ h1 {
 
 @media (max-width: 860px) {
   .app-header,
-  .workspace {
+  .workspace,
+  .list-page {
     grid-template-columns: 1fr;
   }
 
@@ -361,6 +440,10 @@ h1 {
   }
 
   .metadata-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-metadata {
     grid-template-columns: 1fr;
   }
 

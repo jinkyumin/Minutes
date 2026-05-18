@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>회의록 전사 및 요약</title>
+    <title>아성다이소 회의록</title>
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -11,10 +11,10 @@
       <header class="app-header">
         <div>
           <p class="eyebrow">Meeting Minutes</p>
-          <h1>회의 음성 전사와 종료 요약</h1>
+          <h1>아성다이소 회의록</h1>
           <p class="lead">
-            회의를 시작하면 브라우저가 마이크 음성을 실시간으로 전사하고, 종료 시
-            핵심 내용과 할 일을 로컬에서 정리합니다.
+            회의를 실시간으로 전사하고, 회의 종료 시 요약과 함께 회의록을 저장합니다.
+            저장된 회의록은 목록 페이지에서 다시 확인할 수 있습니다.
           </p>
         </div>
         <div class="status-strip" aria-live="polite">
@@ -29,12 +29,17 @@
         </div>
       </header>
 
+      <nav class="view-tabs" aria-label="회의록 화면">
+        <button id="composeTab" class="active" type="button">회의록 작성</button>
+        <button id="listTab" type="button">회의록 목록</button>
+      </nav>
+
       <section id="supportNotice" class="notice" hidden>
         이 브라우저는 실시간 음성 인식을 지원하지 않습니다. Chrome 또는 Edge에서
-        실행해 주세요.
+        실행해 주세요. 저장된 회의록 조회는 계속 사용할 수 있습니다.
       </section>
 
-      <section class="workspace">
+      <section id="composeView" class="workspace">
         <article class="panel">
           <section class="metadata-panel" aria-label="회의 기본 정보">
             <div class="field-group">
@@ -116,17 +121,31 @@
               <li class="empty-state">회의 종료 후 할 일이 표시됩니다.</li>
             </ul>
           </section>
-
-          <section class="summary-section">
-            <div class="panel-header compact">
-              <h2>이전 회의록</h2>
-              <span id="historyCount">0건</span>
-            </div>
-            <ol id="historyList" class="history-list">
-              <li class="empty-state">저장된 회의록이 없습니다.</li>
-            </ol>
-          </section>
         </aside>
+      </section>
+
+      <section id="listView" class="list-page" hidden>
+        <article class="panel">
+          <div class="panel-header">
+            <h2>회의록 목록</h2>
+            <span id="historyCount">0건</span>
+          </div>
+          <ol id="historyList" class="history-list">
+            <li class="empty-state">저장된 회의록이 없습니다.</li>
+          </ol>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>회의록 상세</h2>
+            <div class="ghost-actions">
+              <button id="loadRecordButton" type="button" disabled>작성 화면에서 열기</button>
+            </div>
+          </div>
+          <section id="recordDetail" class="record-detail">
+            <p class="empty-state">목록에서 회의록을 선택하면 상세 내용이 표시됩니다.</p>
+          </section>
+        </article>
       </section>
     </main>
 
