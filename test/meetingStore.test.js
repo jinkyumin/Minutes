@@ -49,6 +49,29 @@ test('finds a saved meeting record by id', () => {
   assert.equal(store.getRecord('missing'), null);
 });
 
+test('deletes a saved meeting record by id', () => {
+  const store = createMeetingStore(createMemoryStorage());
+
+  store.saveRecord({
+    id: 'minutes-1',
+    meetingDateTime: '2026-05-18T11:00',
+    summary: { overview: 'first' },
+  });
+  store.saveRecord({
+    id: 'minutes-2',
+    meetingDateTime: '2026-05-18T12:00',
+    summary: { overview: 'second' },
+  });
+
+  assert.equal(store.deleteRecord('minutes-1'), true);
+  assert.equal(store.getRecord('minutes-1'), null);
+  assert.deepEqual(
+    store.listRecords().map((record) => record.id),
+    ['minutes-2'],
+  );
+  assert.equal(store.deleteRecord('missing'), false);
+});
+
 test('normalizes missing optional record fields', () => {
   const store = createMeetingStore(createMemoryStorage());
 

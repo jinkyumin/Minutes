@@ -23,6 +23,14 @@ export function createMeetingStore(storage) {
       storage.setItem(STORAGE_KEY, JSON.stringify(nextRecords));
       return normalizedRecord;
     },
+
+    deleteRecord(id) {
+      const records = readRecords(storage);
+      const nextRecords = records.filter((record) => record.id !== id);
+
+      storage.setItem(STORAGE_KEY, JSON.stringify(nextRecords));
+      return nextRecords.length !== records.length;
+    },
   };
 }
 

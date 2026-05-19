@@ -98,6 +98,9 @@ async function summarizeWithGemini(body, transcript, note) {
       },
       body: JSON.stringify({
         generationConfig: {
+          temperature: 0.2,
+          topP: 0.9,
+          maxOutputTokens: 2048,
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'OBJECT',
@@ -138,6 +141,11 @@ function buildPrompt(body, transcript, note) {
     '다음 한국어 회의 내용을 회의록으로 정리하세요.',
     '반드시 JSON만 반환하세요.',
     'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"]}',
+    '발언자를 제거하고 중복 발화, 말더듬, 반복 문장을 통합하세요.',
+    '개요는 회의 목적과 결론을 2~4문장으로 자연스럽게 작성하세요.',
+    '핵심 내용은 의사결정, 쟁점, 비교, 근거 중심으로 5~8개까지 정리하세요.',
+    '할 일은 명확한 후속 조치만 작성하고 담당자나 기한이 있으면 포함하세요.',
+    '단순 질문, 잡담, 미완성 문장은 할 일로 만들지 마세요.',
     '',
     `회의 일시: ${body.meetingDateTime || '미입력'}`,
     `참석자: ${body.attendees || '미입력'}`,

@@ -14,11 +14,13 @@ const state = {
   startedAt: null,
   selectedRecordId: null,
   currentRecord: null,
+  isHistoryCollapsed: false,
 };
 
 const meetingStore = createMeetingStore(window.localStorage);
 
 const elements = {
+  appGrid: document.querySelector('#appGrid'),
   stage: document.querySelector('#stage'),
   status: document.querySelector('#status'),
   supportNotice: document.querySelector('#supportNotice'),
@@ -26,6 +28,7 @@ const elements = {
   meetingDateTime: document.querySelector('#meetingDateTime'),
   attendees: document.querySelector('#attendees'),
   note: document.querySelector('#note'),
+  newMeetingButton: document.querySelector('#newMeetingButton'),
   startButton: document.querySelector('#startButton'),
   pauseButton: document.querySelector('#pauseButton'),
   endButton: document.querySelector('#endButton'),
@@ -42,10 +45,9 @@ const elements = {
   notionDatabaseId: document.querySelector('#notionDatabaseId'),
   saveNotionSettingsButton: document.querySelector('#saveNotionSettingsButton'),
   testNotionButton: document.querySelector('#testNotionButton'),
+  toggleHistoryButton: document.querySelector('#toggleHistoryButton'),
   historyCount: document.querySelector('#historyCount'),
   historyList: document.querySelector('#historyList'),
-  recordDetail: document.querySelector('#recordDetail'),
-  loadRecordButton: document.querySelector('#loadRecordButton'),
 };
 
 let durationTimer = null;
@@ -67,10 +69,10 @@ function init() {
 
   render();
   renderHistory();
-  renderSelectedRecord();
 }
 
 function bindEvents() {
+  elements.newMeetingButton.addEventListener('click', resetMeeting);
   elements.startButton.addEventListener('click', startMeeting);
   elements.pauseButton.addEventListener('click', togglePause);
   elements.endButton.addEventListener('click', endMeeting);
@@ -79,8 +81,9 @@ function bindEvents() {
   elements.notionSettingsButton.addEventListener('click', openNotionSettings);
   elements.saveNotionSettingsButton.addEventListener('click', saveNotionSettings);
   elements.testNotionButton.addEventListener('click', testNotionConnection);
-  elements.historyList.addEventListener('click', selectHistoryRecord);
-  elements.loadRecordButton.addEventListener('click', loadSelectedRecordIntoCompose);
+  elements.toggleHistoryButton.addEventListener('click', toggleHistory);
+  elements.historyList.addEventListener('click', handleHistoryClick);
+  document.addEventListener('click', closeHistoryMenus);
 }
 
 function createRecognition() {
@@ -113,6 +116,7 @@ function startMeeting() {
   setStatus('회의 진행 중');
   setStage('현재 단계: 회의 진행 중');
   render();
+  renderHistory();
 }
 
 function togglePause() {
@@ -146,16 +150,39 @@ async function endMeeting() {
   const draftRecord = buildCurrentRecord({
     summary: summarizeMeeting(buildSummaryEntries()),
   });
-  const { summary, source, error } = await summarizeWithChatGPT(draftRecord);
+  const { summary, source, error } = await summarizeWithLlm(draftRecord);
   const savedRecord = meetingStore.saveRecord({ ...draftRecord, summary });
 
   state.currentRecord = savedRecord;
   state.selectedRecordId = savedRecord.id;
   renderSummary(summary);
   renderHistory();
-  renderSelectedRecord();
-  setStatus(source === 'chatgpt' ? 'ChatGPT 요약 완료' : `로컬 요약 사용${error ? `: ${error}` : ''}`);
+  setStatus(source === 'llm' ? 'LLM 요약 완료' : `로컬 요약 사용${error ? `: ${error}` : ''}`);
   render();
+}
+
+function resetMeeting() {
+  if (state.isMeetingActive) {
+    state.recognition?.stop();
+  }
+
+  state.transcriptEntries = [];
+  state.isMeetingActive = false;
+  state.isPaused = false;
+  state.startedAt = null;
+  state.currentRecord = null;
+  state.selectedRecordId = null;
+  stopDurationTimer();
+  elements.meetingDateTime.value = toDateTimeInputValue(new Date());
+  elements.attendees.value = '';
+  elements.note.value = '';
+  elements.meetingDuration.textContent = '00:00';
+  elements.liveText.textContent = '회의를 시작하면 말한 내용이 여기에 표시됩니다.';
+  clearSummary();
+  setStatus('대기 중');
+  setStage('현재 단계: 회의 정보 입력');
+  render();
+  renderHistory();
 }
 
 function handleRecognitionResult(event) {
@@ -192,7 +219,7 @@ function handleRecognitionError(event) {
   setStatus(message);
 }
 
-async function summarizeWithChatGPT(record) {
+async function summarizeWithLlm(record) {
   try {
     const response = await fetch('/api/summarize', {
       method: 'POST',
@@ -206,26 +233,14 @@ async function summarizeWithChatGPT(record) {
 
     return {
       summary: await response.json(),
-      source: 'chatgpt',
+      source: 'llm',
     };
   } catch (error) {
-    const message = error?.message;
     return {
       summary: summarizeMeeting(buildSummaryEntries()),
       source: 'local',
-      error: shortenError(message),
+      error: shortenError(error?.message),
     };
-  }
-}
-
-function shortenError(message) {
-  if (!message) return '';
-
-  try {
-    const parsed = JSON.parse(message);
-    return String(parsed.error || message).slice(0, 90);
-  } catch {
-    return String(message).slice(0, 90);
   }
 }
 
@@ -248,6 +263,11 @@ function buildCurrentRecord({ summary }) {
 }
 
 function render() {
+  elements.appGrid.classList.toggle('history-collapsed', state.isHistoryCollapsed);
+  elements.toggleHistoryButton.textContent = state.isHistoryCollapsed ? '›' : '‹';
+  elements.toggleHistoryButton.title = state.isHistoryCollapsed
+    ? '회의록 목록 보이기'
+    : '회의록 목록 숨기기';
   elements.startButton.disabled = state.isMeetingActive || !SpeechRecognition;
   elements.pauseButton.disabled = !state.isMeetingActive;
   elements.endButton.disabled = !state.isMeetingActive;
@@ -321,84 +341,121 @@ function renderHistory() {
 
   records.forEach((record) => {
     const item = document.createElement('li');
-    const button = document.createElement('button');
+    const selectButton = document.createElement('button');
+    const menuButton = document.createElement('button');
+    const menu = document.createElement('div');
+    const deleteButton = document.createElement('button');
     const title = document.createElement('strong');
     const meta = document.createElement('span');
     const preview = document.createElement('p');
 
-    button.type = 'button';
-    button.dataset.recordId = record.id;
-    button.classList.toggle('selected', record.id === state.selectedRecordId);
+    item.className = 'history-item';
+    selectButton.type = 'button';
+    selectButton.dataset.recordId = record.id;
+    selectButton.className = 'history-record-button';
+    selectButton.classList.toggle('selected', record.id === state.selectedRecordId);
+    menuButton.type = 'button';
+    menuButton.dataset.menuRecordId = record.id;
+    menuButton.className = 'history-menu-button';
+    menuButton.textContent = '...';
+    menuButton.title = '더보기';
+    menu.hidden = true;
+    menu.className = 'history-menu';
+    deleteButton.type = 'button';
+    deleteButton.dataset.deleteRecordId = record.id;
+    deleteButton.className = 'delete-record-button';
+    deleteButton.textContent = '삭제';
+
     title.textContent = formatMeetingDate(record.meetingDateTime);
     meta.textContent = record.attendees || '참석자 미입력';
     preview.textContent = record.summary.overview || '요약 없음';
 
-    button.append(title, meta, preview);
-    item.append(button);
+    selectButton.append(title, meta, preview);
+    menu.append(deleteButton);
+    item.append(selectButton, menuButton, menu);
     elements.historyList.append(item);
   });
 }
 
-function renderSelectedRecord() {
-  const record = state.selectedRecordId
-    ? meetingStore.getRecord(state.selectedRecordId)
-    : null;
-
-  elements.recordDetail.replaceChildren();
-  elements.loadRecordButton.disabled = !record;
-
-  if (!record) {
-    const empty = document.createElement('p');
-    empty.className = 'empty-state';
-    empty.textContent = '목록에서 회의록을 선택하면 상세 내용이 표시됩니다.';
-    elements.recordDetail.append(empty);
+function handleHistoryClick(event) {
+  const menuButton = event.target.closest('button[data-menu-record-id]');
+  if (menuButton) {
+    event.stopPropagation();
+    toggleHistoryMenu(menuButton);
     return;
   }
 
-  const metadata = document.createElement('dl');
-  metadata.className = 'detail-metadata';
-  appendDefinition(metadata, '회의 일시', formatMeetingDate(record.meetingDateTime));
-  appendDefinition(metadata, '참석자', record.attendees || '미입력');
-  appendDefinition(metadata, 'Note', record.note || '없음');
+  const deleteButton = event.target.closest('button[data-delete-record-id]');
+  if (deleteButton) {
+    event.stopPropagation();
+    deleteHistoryRecord(deleteButton.dataset.deleteRecordId);
+    return;
+  }
 
-  elements.recordDetail.append(
-    metadata,
-    createDetailSection('요약', [record.summary.overview || '요약 없음']),
-    createDetailSection('핵심 내용', record.summary.keyPoints),
-    createDetailSection('할 일', record.summary.actionItems),
-    createDetailSection('전사 내용', record.transcriptEntries.map((entry) => entry.text)),
-  );
+  const recordButton = event.target.closest('button[data-record-id]');
+  if (recordButton) {
+    selectHistoryRecord(recordButton.dataset.recordId);
+  }
 }
 
-function selectHistoryRecord(event) {
-  const button = event.target.closest('button[data-record-id]');
-  if (!button) return;
+function toggleHistoryMenu(button) {
+  const item = button.closest('.history-item');
+  const menu = item.querySelector('.history-menu');
 
-  state.selectedRecordId = button.dataset.recordId;
-  state.currentRecord = meetingStore.getRecord(state.selectedRecordId);
-  renderHistory();
-  renderSelectedRecord();
-  render();
+  closeHistoryMenus();
+  menu.hidden = false;
 }
 
-function loadSelectedRecordIntoCompose() {
-  const record = meetingStore.getRecord(state.selectedRecordId);
+function closeHistoryMenus(event) {
+  if (event?.target.closest('.history-item')) return;
+
+  document.querySelectorAll('.history-menu').forEach((menu) => {
+    menu.hidden = true;
+  });
+}
+
+function deleteHistoryRecord(recordId) {
+  const record = meetingStore.getRecord(recordId);
   if (!record) return;
 
+  if (!window.confirm('선택한 회의록을 삭제할까요?')) return;
+
+  meetingStore.deleteRecord(recordId);
+
+  if (state.selectedRecordId === recordId) {
+    resetMeeting();
+  } else {
+    renderHistory();
+  }
+
+  setStatus('회의록 삭제 완료');
+}
+
+function selectHistoryRecord(recordId) {
+  const record = meetingStore.getRecord(recordId);
+  if (!record) return;
+
+  state.selectedRecordId = record.id;
+  state.currentRecord = record;
   state.transcriptEntries = record.transcriptEntries.map((entry) => ({
     ...entry,
     time: entry.time ? new Date(entry.time) : new Date(record.savedAt),
   }));
   state.isMeetingActive = false;
   state.isPaused = false;
-  state.currentRecord = record;
   elements.meetingDateTime.value = record.meetingDateTime;
   elements.attendees.value = record.attendees;
   elements.note.value = record.note;
-  elements.liveText.textContent = '이전 회의록을 불러왔습니다.';
+  elements.liveText.textContent = '선택한 회의록을 입력창에 불러왔습니다.';
   renderSummary(record.summary);
   setStatus('회의록 불러옴');
   setStage('현재 단계: 결과 확인');
+  render();
+  renderHistory();
+}
+
+function toggleHistory() {
+  state.isHistoryCollapsed = !state.isHistoryCollapsed;
   render();
 }
 
@@ -436,8 +493,8 @@ async function sendCurrentRecordToNotion() {
     }
 
     setStatus('Notion 전송 완료');
-  } catch {
-    setStatus('Notion 전송 실패');
+  } catch (error) {
+    setStatus(`Notion 전송 실패: ${shortenError(error?.message)}`);
   }
 }
 
@@ -461,16 +518,12 @@ async function testNotionConnection() {
     },
   });
 
-  await sendRecordToNotion(sampleRecord);
-}
-
-async function sendRecordToNotion(record) {
   const response = await fetch('/api/notion', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       databaseId: elements.notionDatabaseId.value.trim(),
-      record,
+      record: sampleRecord,
     }),
   });
 
@@ -489,38 +542,15 @@ function listItems(list) {
     .filter((text) => text && !text.includes('표시됩니다') && !text.includes('없습니다'));
 }
 
-function appendDefinition(list, term, value) {
-  const dt = document.createElement('dt');
-  const dd = document.createElement('dd');
-  dt.textContent = term;
-  dd.textContent = value;
-  list.append(dt, dd);
-}
+function shortenError(message) {
+  if (!message) return '';
 
-function createDetailSection(title, items) {
-  const section = document.createElement('section');
-  const heading = document.createElement('h3');
-  const list = document.createElement('ul');
-  const visibleItems = Array.isArray(items) ? items.filter(Boolean) : [];
-
-  heading.textContent = title;
-  section.className = 'detail-section';
-
-  if (visibleItems.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-state';
-    empty.textContent = '내용이 없습니다.';
-    list.append(empty);
-  } else {
-    visibleItems.forEach((itemText) => {
-      const item = document.createElement('li');
-      item.textContent = itemText;
-      list.append(item);
-    });
+  try {
+    const parsed = JSON.parse(message);
+    return String(parsed.error || message).slice(0, 90);
+  } catch {
+    return String(message).slice(0, 90);
   }
-
-  section.append(heading, list);
-  return section;
 }
 
 function setStatus(message) {

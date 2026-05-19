@@ -24,10 +24,27 @@
         이 브라우저는 실시간 음성 인식을 지원하지 않습니다. Chrome 또는 Edge에서 실행해주세요.
       </section>
 
-      <section class="workspace">
+      <section id="appGrid" class="app-grid">
+        <aside class="panel history-panel">
+          <div class="panel-header">
+            <h2 class="history-content">회의록 목록</h2>
+            <button id="toggleHistoryButton" class="collapse-button" type="button" title="회의록 목록 숨기기">‹</button>
+          </div>
+          <div class="collapsed-label">회의록 목록</div>
+          <div class="history-content">
+            <div class="panel-header compact">
+              <span id="historyCount">0건</span>
+            </div>
+            <ol id="historyList" class="history-list">
+              <li class="empty-state">저장된 회의록이 없습니다.</li>
+            </ol>
+          </div>
+        </aside>
+
         <article class="panel">
           <div class="panel-header">
             <h2>회의 준비</h2>
+            <button id="newMeetingButton" type="button">새 회의</button>
           </div>
 
           <section class="meeting-fields" aria-label="회의 기본 정보">
@@ -99,35 +116,13 @@
           </div>
         </aside>
       </section>
-
-      <section class="history-layout">
-        <article class="panel">
-          <div class="panel-header">
-            <h2>최근 회의록</h2>
-            <span id="historyCount">0건</span>
-          </div>
-          <ol id="historyList" class="history-list">
-            <li class="empty-state">저장된 회의록이 없습니다.</li>
-          </ol>
-        </article>
-
-        <article class="panel">
-          <div class="panel-header">
-            <h2>회의록 상세</h2>
-            <button id="loadRecordButton" type="button" disabled>작성 화면에서 열기</button>
-          </div>
-          <section id="recordDetail" class="record-detail">
-            <p class="empty-state">목록에서 회의록을 선택하면 상세 내용이 표시됩니다.</p>
-          </section>
-        </article>
-      </section>
     </main>
 
     <dialog id="notionDialog" class="settings-dialog">
       <form method="dialog">
         <div class="panel-header">
           <h2>Notion 설정</h2>
-          <button id="closeNotionDialogButton" class="icon-button" value="cancel" type="submit" aria-label="닫기">×</button>
+          <button class="icon-button" value="cancel" type="submit" aria-label="닫기">×</button>
         </div>
         <label>
           Database ID

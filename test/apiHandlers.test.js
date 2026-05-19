@@ -102,6 +102,11 @@ test('summarize API calls Gemini when selected', async () => {
     capturedRequest.url,
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-gemini-key',
   );
+  const geminiBody = JSON.parse(capturedRequest.options.body);
+  assert.equal(geminiBody.generationConfig.temperature, 0.2);
+  assert.equal(geminiBody.generationConfig.topP, 0.9);
+  assert.equal(geminiBody.generationConfig.maxOutputTokens, 2048);
+  assert.match(geminiBody.contents[0].parts[0].text, /발언자를 제거하고/);
 
   restoreEnv('LLM_PROVIDER', originalProvider);
   restoreEnv('GEMINI_API_KEY', originalKey);
@@ -110,7 +115,9 @@ test('summarize API calls Gemini when selected', async () => {
 });
 
 test('summarize API rejects missing OpenAI key', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.OPENAI_API_KEY;
+  delete process.env.LLM_PROVIDER;
   delete process.env.OPENAI_API_KEY;
 
   const response = createResponse();
@@ -119,6 +126,7 @@ test('summarize API rejects missing OpenAI key', async () => {
   assert.equal(response.statusCode, 500);
   assert.match(JSON.parse(response.body).error, /OPENAI_API_KEY/);
 
+  restoreEnv('LLM_PROVIDER', originalProvider);
   restoreEnv('OPENAI_API_KEY', originalKey);
 });
 
