@@ -1,5 +1,6 @@
 import { summarizeMeeting } from './summary.js';
 import { createMeetingStore } from './meetingStore.js';
+import { createRemoteMeetingStore } from './remoteMeetingStore.js';
 import { buildSummaryPayload, formatMeetingMarkdown } from './meetingPayload.js';
 
 const NOTION_DATABASE_KEY = 'meeting-minutes-notion-database-id';
@@ -17,7 +18,7 @@ const state = {
   isHistoryCollapsed: false,
 };
 
-const meetingStore = createMeetingStore(window.localStorage);
+const meetingStore = createRemoteMeetingStore(createMeetingStore(window.localStorage));
 
 const elements = {
   appGrid: document.querySelector('#appGrid'),
@@ -69,7 +70,7 @@ function init() {
   }
 
   render();
-  renderHistory();
+  void renderHistory();
 }
 
 function bindEvents() {
@@ -117,7 +118,7 @@ function startMeeting() {
   setStatus('회의 진행 중');
   setStage('현재 단계: 회의 진행 중');
   render();
-  renderHistory();
+  void renderHistory();
 }
 
 function togglePause() {
@@ -152,12 +153,12 @@ async function endMeeting() {
     summary: summarizeMeeting(buildSummaryEntries()),
   });
   const { summary, source, error } = await summarizeWithLlm(draftRecord);
-  const savedRecord = meetingStore.saveRecord({ ...draftRecord, summary });
+  const savedRecord = await meetingStore.saveRecord({ ...draftRecord, summary });
 
   state.currentRecord = savedRecord;
   state.selectedRecordId = savedRecord.id;
   renderSummary(summary);
-  renderHistory();
+  void renderHistory();
   setStatus(source === 'llm' ? 'LLM 요약 완료' : `로컬 요약 사용${error ? `: ${error}` : ''}`);
   render();
 }
@@ -184,7 +185,7 @@ function resetMeeting() {
   setStatus('대기 중');
   setStage('현재 단계: 회의 정보 입력');
   render();
-  renderHistory();
+  void renderHistory();
 }
 
 function handleRecognitionResult(event) {
@@ -329,8 +330,8 @@ function renderList(list, items, emptyText) {
   });
 }
 
-function renderHistory() {
-  const records = meetingStore.listRecords();
+async function renderHistory() {
+  const records = await meetingStore.listRecords();
   elements.historyList.replaceChildren();
   elements.historyCount.textContent = `${records.length}건`;
 
@@ -389,13 +390,13 @@ function handleHistoryClick(event) {
   const deleteButton = event.target.closest('button[data-delete-record-id]');
   if (deleteButton) {
     event.stopPropagation();
-    deleteHistoryRecord(deleteButton.dataset.deleteRecordId);
+    void deleteHistoryRecord(deleteButton.dataset.deleteRecordId);
     return;
   }
 
   const recordButton = event.target.closest('button[data-record-id]');
   if (recordButton) {
-    selectHistoryRecord(recordButton.dataset.recordId);
+    void selectHistoryRecord(recordButton.dataset.recordId);
   }
 }
 
@@ -415,25 +416,25 @@ function closeHistoryMenus(event) {
   });
 }
 
-function deleteHistoryRecord(recordId) {
-  const record = meetingStore.getRecord(recordId);
+async function deleteHistoryRecord(recordId) {
+  const record = await meetingStore.getRecord(recordId);
   if (!record) return;
 
   if (!window.confirm('선택한 회의록을 삭제할까요?')) return;
 
-  meetingStore.deleteRecord(recordId);
+  await meetingStore.deleteRecord(recordId);
 
   if (state.selectedRecordId === recordId) {
     resetMeeting();
   } else {
-    renderHistory();
+    await renderHistory();
   }
 
   setStatus('회의록 삭제 완료');
 }
 
-function selectHistoryRecord(recordId) {
-  const record = meetingStore.getRecord(recordId);
+async function selectHistoryRecord(recordId) {
+  const record = await meetingStore.getRecord(recordId);
   if (!record) return;
 
   state.selectedRecordId = record.id;
@@ -453,7 +454,7 @@ function selectHistoryRecord(recordId) {
   setStatus('회의록 불러옴');
   setStage('현재 단계: 결과 확인');
   render();
-  renderHistory();
+  void renderHistory();
 }
 
 function toggleHistory() {
@@ -475,7 +476,7 @@ async function copySummary() {
 }
 
 async function sendCurrentRecordToNotion() {
-  const record = state.currentRecord || meetingStore.getRecord(state.selectedRecordId);
+  const record = state.currentRecord || (await meetingStore.getRecord(state.selectedRecordId));
   if (!record) return;
 
   setStatus('Notion 전송 중');

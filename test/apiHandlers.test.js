@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import summarizeHandler from '../api/summarize.js';
 import notionHandler from '../api/notion.js';
+import meetingsHandler from '../api/meetings.js';
 
 test('summarize API calls OpenAI and returns normalized summary', async () => {
   const originalKey = process.env.OPENAI_API_KEY;
@@ -325,6 +326,152 @@ test('notion API creates a page in the selected database', async () => {
 
   restoreEnv('NOTION_TOKEN', originalToken);
   restoreEnv('NOTION_DATABASE_ID', originalDatabaseId);
+  globalThis.fetch = originalFetch;
+});
+
+test('meetings API lists records from Supabase', async () => {
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalFetch = globalThis.fetch;
+
+  process.env.SUPABASE_URL = 'https://project.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+
+  let capturedRequest;
+  globalThis.fetch = async (url, options) => {
+    capturedRequest = { url, options };
+    return jsonResponse([
+      {
+        id: 'record-1',
+        title: 'SAP review',
+        meeting_date_time: '2026-05-19T09:00',
+        attendees: 'A, B',
+        note: 'memo',
+        transcript_entries: [{ text: 'hello' }],
+        summary: { overview: 'summary', keyPoints: ['point'], actionItems: [] },
+        saved_at: '2026-05-19T00:00:00.000Z',
+      },
+    ]);
+  };
+
+  const response = createResponse();
+  await meetingsHandler(createRequest('GET'), response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), [
+    {
+      id: 'record-1',
+      title: 'SAP review',
+      meetingDateTime: '2026-05-19T09:00',
+      attendees: 'A, B',
+      note: 'memo',
+      notes: 'memo',
+      transcriptEntries: [{ text: 'hello' }],
+      summary: { overview: 'summary', keyPoints: ['point'], actionItems: [] },
+      savedAt: '2026-05-19T00:00:00.000Z',
+    },
+  ]);
+  assert.equal(
+    capturedRequest.url,
+    'https://project.supabase.co/rest/v1/meeting_records?select=*&order=saved_at.desc',
+  );
+  assert.equal(capturedRequest.options.headers.apikey, 'service-key');
+
+  restoreEnv('SUPABASE_URL', originalUrl);
+  restoreEnv('SUPABASE_SERVICE_ROLE_KEY', originalKey);
+  globalThis.fetch = originalFetch;
+});
+
+test('meetings API saves records to Supabase', async () => {
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalFetch = globalThis.fetch;
+
+  process.env.SUPABASE_URL = 'https://project.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+
+  let capturedRequest;
+  globalThis.fetch = async (url, options) => {
+    capturedRequest = { url, options };
+    return jsonResponse([
+      {
+        id: 'record-2',
+        title: 'Saved title',
+        meeting_date_time: '2026-05-19T10:00',
+        attendees: '',
+        note: '',
+        transcript_entries: [],
+        summary: { overview: 'done', keyPoints: [], actionItems: [] },
+        saved_at: '2026-05-19T01:00:00.000Z',
+      },
+    ]);
+  };
+
+  const response = createResponse();
+  await meetingsHandler(
+    createRequest('POST', {
+      title: 'Saved title',
+      meetingDateTime: '2026-05-19T10:00',
+      summary: { overview: 'done', keyPoints: [], actionItems: [] },
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).id, 'record-2');
+  assert.equal(capturedRequest.url, 'https://project.supabase.co/rest/v1/meeting_records');
+  assert.equal(capturedRequest.options.method, 'POST');
+  assert.equal(capturedRequest.options.headers.Prefer, 'return=representation');
+  assert.deepEqual(JSON.parse(capturedRequest.options.body), {
+    title: 'Saved title',
+    meeting_date_time: '2026-05-19T10:00',
+    attendees: '',
+    note: '',
+    transcript_entries: [],
+    summary: { overview: 'done', keyPoints: [], actionItems: [] },
+  });
+
+  restoreEnv('SUPABASE_URL', originalUrl);
+  restoreEnv('SUPABASE_SERVICE_ROLE_KEY', originalKey);
+  globalThis.fetch = originalFetch;
+});
+
+test('meetings API deletes records from Supabase', async () => {
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalFetch = globalThis.fetch;
+
+  process.env.SUPABASE_URL = 'https://project.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+
+  let capturedRequest;
+  globalThis.fetch = async (url, options) => {
+    capturedRequest = { url, options };
+    return {
+      ok: true,
+      status: 204,
+      async text() {
+        return '';
+      },
+      async json() {
+        return {};
+      },
+    };
+  };
+
+  const response = createResponse();
+  await meetingsHandler(createRequest('DELETE', { id: 'record-3' }), response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), { ok: true });
+  assert.equal(
+    capturedRequest.url,
+    'https://project.supabase.co/rest/v1/meeting_records?id=eq.record-3',
+  );
+  assert.equal(capturedRequest.options.method, 'DELETE');
+
+  restoreEnv('SUPABASE_URL', originalUrl);
+  restoreEnv('SUPABASE_SERVICE_ROLE_KEY', originalKey);
   globalThis.fetch = originalFetch;
 });
 
