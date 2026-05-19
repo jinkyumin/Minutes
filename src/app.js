@@ -1,6 +1,8 @@
 import { summarizeMeeting } from './summary.js';
 import { createMeetingStore } from './meetingStore.js';
+import { buildSummaryPayload, formatMeetingMarkdown } from './meetingPayload.js';
 
+const NOTION_DATABASE_KEY = 'meeting-minutes-notion-database-id';
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
@@ -11,37 +13,39 @@ const state = {
   isPaused: false,
   startedAt: null,
   selectedRecordId: null,
+  currentRecord: null,
 };
 
 const meetingStore = createMeetingStore(window.localStorage);
 
 const elements = {
-  composeTab: document.querySelector('#composeTab'),
-  listTab: document.querySelector('#listTab'),
-  composeView: document.querySelector('#composeView'),
-  listView: document.querySelector('#listView'),
+  stage: document.querySelector('#stage'),
+  status: document.querySelector('#status'),
+  supportNotice: document.querySelector('#supportNotice'),
+  meetingDuration: document.querySelector('#meetingDuration'),
+  meetingDateTime: document.querySelector('#meetingDateTime'),
+  attendees: document.querySelector('#attendees'),
+  note: document.querySelector('#note'),
   startButton: document.querySelector('#startButton'),
   pauseButton: document.querySelector('#pauseButton'),
   endButton: document.querySelector('#endButton'),
-  resetButton: document.querySelector('#resetButton'),
-  copyTranscriptButton: document.querySelector('#copyTranscriptButton'),
-  copySummaryButton: document.querySelector('#copySummaryButton'),
-  loadRecordButton: document.querySelector('#loadRecordButton'),
-  meetingDateTime: document.querySelector('#meetingDateTime'),
-  attendees: document.querySelector('#attendees'),
-  notes: document.querySelector('#notes'),
-  status: document.querySelector('#status'),
-  supportNotice: document.querySelector('#supportNotice'),
   liveText: document.querySelector('#liveText'),
+  transcriptCount: document.querySelector('#transcriptCount'),
   transcriptList: document.querySelector('#transcriptList'),
   summaryOverview: document.querySelector('#summaryOverview'),
   keyPoints: document.querySelector('#keyPoints'),
   actionItems: document.querySelector('#actionItems'),
-  meetingDuration: document.querySelector('#meetingDuration'),
-  transcriptCount: document.querySelector('#transcriptCount'),
+  copySummaryButton: document.querySelector('#copySummaryButton'),
+  sendNotionButton: document.querySelector('#sendNotionButton'),
+  notionSettingsButton: document.querySelector('#notionSettingsButton'),
+  notionDialog: document.querySelector('#notionDialog'),
+  notionDatabaseId: document.querySelector('#notionDatabaseId'),
+  saveNotionSettingsButton: document.querySelector('#saveNotionSettingsButton'),
+  testNotionButton: document.querySelector('#testNotionButton'),
   historyCount: document.querySelector('#historyCount'),
   historyList: document.querySelector('#historyList'),
   recordDetail: document.querySelector('#recordDetail'),
+  loadRecordButton: document.querySelector('#loadRecordButton'),
 };
 
 let durationTimer = null;
@@ -50,32 +54,31 @@ init();
 
 function init() {
   elements.meetingDateTime.value = toDateTimeInputValue(new Date());
+  elements.notionDatabaseId.value = window.localStorage.getItem(NOTION_DATABASE_KEY) || '';
   bindEvents();
 
   if (!SpeechRecognition) {
     elements.supportNotice.hidden = false;
     elements.startButton.disabled = true;
-    setStatus('이 브라우저는 실시간 음성 인식을 지원하지 않습니다.');
-    renderHistory();
-    renderSelectedRecord();
-    return;
+    setStatus('음성 인식 미지원');
+  } else {
+    state.recognition = createRecognition();
   }
 
-  state.recognition = createRecognition();
   render();
   renderHistory();
   renderSelectedRecord();
 }
 
 function bindEvents() {
-  elements.composeTab.addEventListener('click', () => showView('compose'));
-  elements.listTab.addEventListener('click', () => showView('list'));
   elements.startButton.addEventListener('click', startMeeting);
   elements.pauseButton.addEventListener('click', togglePause);
   elements.endButton.addEventListener('click', endMeeting);
-  elements.resetButton.addEventListener('click', resetMeeting);
-  elements.copyTranscriptButton.addEventListener('click', copyTranscript);
   elements.copySummaryButton.addEventListener('click', copySummary);
+  elements.sendNotionButton.addEventListener('click', sendCurrentRecordToNotion);
+  elements.notionSettingsButton.addEventListener('click', openNotionSettings);
+  elements.saveNotionSettingsButton.addEventListener('click', saveNotionSettings);
+  elements.testNotionButton.addEventListener('click', testNotionConnection);
   elements.historyList.addEventListener('click', selectHistoryRecord);
   elements.loadRecordButton.addEventListener('click', loadSelectedRecordIntoCompose);
 }
@@ -97,28 +100,18 @@ function createRecognition() {
   return recognition;
 }
 
-function showView(viewName) {
-  const isList = viewName === 'list';
-  elements.composeView.hidden = isList;
-  elements.listView.hidden = !isList;
-  elements.composeTab.classList.toggle('active', !isList);
-  elements.listTab.classList.toggle('active', isList);
-
-  if (isList) {
-    renderHistory();
-    renderSelectedRecord();
-  }
-}
-
 function startMeeting() {
   state.transcriptEntries = [];
+  state.currentRecord = null;
+  state.selectedRecordId = null;
   state.isMeetingActive = true;
   state.isPaused = false;
   state.startedAt = new Date();
   clearSummary();
-  state.recognition.start();
+  state.recognition?.start();
   startDurationTimer();
-  setStatus('회의 전사를 진행 중입니다.');
+  setStatus('회의 진행 중');
+  setStage('현재 단계: 회의 진행 중');
   render();
 }
 
@@ -128,51 +121,40 @@ function togglePause() {
   state.isPaused = !state.isPaused;
 
   if (state.isPaused) {
-    state.recognition.stop();
-    setStatus('회의 전사가 일시정지되었습니다.');
+    state.recognition?.stop();
+    setStatus('일시정지');
   } else {
-    state.recognition.start();
-    setStatus('회의 전사를 다시 시작했습니다.');
+    state.recognition?.start();
+    setStatus('회의 진행 중');
   }
 
   render();
 }
 
-function endMeeting() {
+async function endMeeting() {
   if (!state.isMeetingActive) return;
 
   state.isMeetingActive = false;
   state.isPaused = false;
-  state.recognition.stop();
+  state.recognition?.stop();
   stopDurationTimer();
-  elements.liveText.textContent = '회의가 종료되었습니다.';
-  const summary = summarizeMeeting(state.transcriptEntries);
-  const savedRecord = saveCurrentMeeting(summary);
+  elements.liveText.textContent = '회의가 종료되었습니다. 요약을 생성합니다.';
+  setStatus('요약 생성 중');
+  setStage('현재 단계: 결과 확인');
+  render();
+
+  const draftRecord = buildCurrentRecord({
+    summary: summarizeMeeting(buildSummaryEntries()),
+  });
+  const summary = await summarizeWithChatGPT(draftRecord);
+  const savedRecord = meetingStore.saveRecord({ ...draftRecord, summary });
+
+  state.currentRecord = savedRecord;
   state.selectedRecordId = savedRecord.id;
   renderSummary(summary);
   renderHistory();
   renderSelectedRecord();
-  setStatus('회의 종료. 회의록을 저장하고 요약을 생성했습니다.');
-  render();
-}
-
-function resetMeeting() {
-  if (state.isMeetingActive) {
-    state.recognition.stop();
-  }
-
-  state.transcriptEntries = [];
-  state.isMeetingActive = false;
-  state.isPaused = false;
-  state.startedAt = null;
-  stopDurationTimer();
-  clearSummary();
-  elements.meetingDateTime.value = toDateTimeInputValue(new Date());
-  elements.attendees.value = '';
-  elements.notes.value = '';
-  elements.liveText.textContent = '회의를 시작하면 실시간 전사가 여기에 표시됩니다.';
-  elements.meetingDuration.textContent = '00:00';
-  setStatus('대기 중');
+  setStatus('요약 완료');
   render();
 }
 
@@ -197,17 +179,54 @@ function handleRecognitionResult(event) {
   }
 
   elements.liveText.textContent =
-    interimText || '말을 멈추면 확정된 문장이 회의록에 추가됩니다.';
+    interimText || '말을 멈추면 확정된 문장이 전사 목록에 추가됩니다.';
   render();
 }
 
 function handleRecognitionError(event) {
   const message =
     event.error === 'not-allowed'
-      ? '마이크 권한이 필요합니다.'
+      ? '마이크 권한이 필요합니다'
       : `음성 인식 오류: ${event.error}`;
 
   setStatus(message);
+}
+
+async function summarizeWithChatGPT(record) {
+  try {
+    const response = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildSummaryPayload(record)),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    return await response.json();
+  } catch {
+    setStatus('로컬 요약 사용');
+    return summarizeMeeting(buildSummaryEntries());
+  }
+}
+
+function buildSummaryEntries() {
+  const noteText = elements.note.value.trim();
+
+  return noteText
+    ? [...state.transcriptEntries, { id: 'note', text: noteText, time: new Date() }]
+    : state.transcriptEntries;
+}
+
+function buildCurrentRecord({ summary }) {
+  return {
+    meetingDateTime: elements.meetingDateTime.value,
+    attendees: elements.attendees.value.trim(),
+    note: elements.note.value.trim(),
+    transcriptEntries: state.transcriptEntries,
+    summary,
+  };
 }
 
 function render() {
@@ -216,6 +235,7 @@ function render() {
   elements.endButton.disabled = !state.isMeetingActive;
   elements.pauseButton.textContent = state.isPaused ? '다시 시작' : '일시정지';
   elements.transcriptCount.textContent = `${state.transcriptEntries.length}개 문장`;
+  elements.sendNotionButton.disabled = !state.currentRecord && !state.selectedRecordId;
   renderTranscript();
 }
 
@@ -239,6 +259,32 @@ function renderTranscript() {
     text.textContent = entry.text;
     item.append(time, text);
     elements.transcriptList.append(item);
+  });
+
+  elements.transcriptList.scrollTop = elements.transcriptList.scrollHeight;
+}
+
+function renderSummary(summary) {
+  elements.summaryOverview.textContent = summary.overview || '요약 없음';
+  renderList(elements.keyPoints, summary.keyPoints, '핵심 내용이 없습니다.');
+  renderList(elements.actionItems, summary.actionItems, '감지된 할 일이 없습니다.');
+}
+
+function renderList(list, items, emptyText) {
+  list.replaceChildren();
+
+  if (!Array.isArray(items) || items.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'empty-state';
+    empty.textContent = emptyText;
+    list.append(empty);
+    return;
+  }
+
+  items.forEach((itemText) => {
+    const item = document.createElement('li');
+    item.textContent = itemText;
+    list.append(item);
   });
 }
 
@@ -295,51 +341,15 @@ function renderSelectedRecord() {
   metadata.className = 'detail-metadata';
   appendDefinition(metadata, '회의 일시', formatMeetingDate(record.meetingDateTime));
   appendDefinition(metadata, '참석자', record.attendees || '미입력');
-  appendDefinition(metadata, '비고', record.notes || '없음');
+  appendDefinition(metadata, 'Note', record.note || '없음');
 
-  const overview = createDetailSection('요약', [record.summary.overview || '요약 없음']);
-  const keyPoints = createDetailSection('핵심 내용', record.summary.keyPoints);
-  const actionItems = createDetailSection('할 일', record.summary.actionItems);
-  const transcript = createDetailSection(
-    '전사 내용',
-    record.transcriptEntries.map((entry) => entry.text),
+  elements.recordDetail.append(
+    metadata,
+    createDetailSection('요약', [record.summary.overview || '요약 없음']),
+    createDetailSection('핵심 내용', record.summary.keyPoints),
+    createDetailSection('할 일', record.summary.actionItems),
+    createDetailSection('전사 내용', record.transcriptEntries.map((entry) => entry.text)),
   );
-
-  elements.recordDetail.append(metadata, overview, keyPoints, actionItems, transcript);
-}
-
-function renderSummary(summary) {
-  elements.summaryOverview.textContent = summary.overview;
-  renderList(elements.keyPoints, summary.keyPoints, '핵심 내용이 없습니다.');
-  renderList(elements.actionItems, summary.actionItems, '감지된 할 일이 없습니다.');
-}
-
-function renderList(list, items, emptyText) {
-  list.replaceChildren();
-
-  if (items.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-state';
-    empty.textContent = emptyText;
-    list.append(empty);
-    return;
-  }
-
-  items.forEach((itemText) => {
-    const item = document.createElement('li');
-    item.textContent = itemText;
-    list.append(item);
-  });
-}
-
-function saveCurrentMeeting(summary) {
-  return meetingStore.saveRecord({
-    meetingDateTime: elements.meetingDateTime.value,
-    attendees: elements.attendees.value.trim(),
-    notes: elements.notes.value.trim(),
-    transcriptEntries: state.transcriptEntries,
-    summary,
-  });
 }
 
 function selectHistoryRecord(event) {
@@ -347,8 +357,10 @@ function selectHistoryRecord(event) {
   if (!button) return;
 
   state.selectedRecordId = button.dataset.recordId;
+  state.currentRecord = meetingStore.getRecord(state.selectedRecordId);
   renderHistory();
   renderSelectedRecord();
+  render();
 }
 
 function loadSelectedRecordIntoCompose() {
@@ -361,14 +373,90 @@ function loadSelectedRecordIntoCompose() {
   }));
   state.isMeetingActive = false;
   state.isPaused = false;
+  state.currentRecord = record;
   elements.meetingDateTime.value = record.meetingDateTime;
   elements.attendees.value = record.attendees;
-  elements.notes.value = record.notes;
+  elements.note.value = record.note;
   elements.liveText.textContent = '이전 회의록을 불러왔습니다.';
   renderSummary(record.summary);
-  setStatus('이전 회의록을 작성 화면에 불러왔습니다.');
+  setStatus('회의록 불러옴');
+  setStage('현재 단계: 결과 확인');
   render();
-  showView('compose');
+}
+
+async function copySummary() {
+  const record = state.currentRecord || buildCurrentRecord({
+    summary: {
+      overview: elements.summaryOverview.textContent,
+      keyPoints: listItems(elements.keyPoints),
+      actionItems: listItems(elements.actionItems),
+    },
+  });
+
+  await navigator.clipboard.writeText(formatMeetingMarkdown(record));
+  setStatus('회의록 복사 완료');
+}
+
+async function sendCurrentRecordToNotion() {
+  const record = state.currentRecord || meetingStore.getRecord(state.selectedRecordId);
+  if (!record) return;
+
+  setStatus('Notion 전송 중');
+
+  try {
+    const response = await fetch('/api/notion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        databaseId: elements.notionDatabaseId.value.trim(),
+        record,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    setStatus('Notion 전송 완료');
+  } catch {
+    setStatus('Notion 전송 실패');
+  }
+}
+
+function openNotionSettings() {
+  elements.notionDatabaseId.value = window.localStorage.getItem(NOTION_DATABASE_KEY) || '';
+  elements.notionDialog.showModal();
+}
+
+function saveNotionSettings() {
+  window.localStorage.setItem(NOTION_DATABASE_KEY, elements.notionDatabaseId.value.trim());
+  elements.notionDialog.close();
+  setStatus('Notion 설정 저장');
+}
+
+async function testNotionConnection() {
+  const sampleRecord = buildCurrentRecord({
+    summary: {
+      overview: 'Notion 연결 테스트',
+      keyPoints: ['설정 확인'],
+      actionItems: [],
+    },
+  });
+
+  await sendRecordToNotion(sampleRecord);
+}
+
+async function sendRecordToNotion(record) {
+  const response = await fetch('/api/notion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      databaseId: elements.notionDatabaseId.value.trim(),
+      record,
+    }),
+  });
+
+  setStatus(response.ok ? 'Notion 연결 성공' : 'Notion 연결 실패');
 }
 
 function clearSummary() {
@@ -377,50 +465,10 @@ function clearSummary() {
   renderList(elements.actionItems, [], '회의 종료 후 할 일이 표시됩니다.');
 }
 
-async function copyTranscript() {
-  const metadata = [
-    `회의 일시: ${elements.meetingDateTime.value || '미입력'}`,
-    `참석자: ${elements.attendees.value.trim() || '미입력'}`,
-    `비고: ${elements.notes.value.trim() || '없음'}`,
-    '',
-  ].join('\n');
-  const transcript = state.transcriptEntries
-    .map((entry) => `[${formatTime(toDate(entry.time))}] ${entry.text}`)
-    .join('\n');
-
-  await copyText(`${metadata}${transcript || '전사된 회의 내용이 없습니다.'}`);
-  setStatus('전사 내용을 복사했습니다.');
-}
-
-async function copySummary() {
-  const keyPoints = listText(elements.keyPoints);
-  const actionItems = listText(elements.actionItems);
-  const text = [
-    `회의 일시: ${elements.meetingDateTime.value || '미입력'}`,
-    `참석자: ${elements.attendees.value.trim() || '미입력'}`,
-    `비고: ${elements.notes.value.trim() || '없음'}`,
-    '',
-    `요약: ${elements.summaryOverview.textContent}`,
-    '',
-    '핵심 내용',
-    keyPoints,
-    '',
-    '할 일',
-    actionItems,
-  ].join('\n');
-
-  await copyText(text);
-  setStatus('요약을 복사했습니다.');
-}
-
-async function copyText(text) {
-  await navigator.clipboard.writeText(text);
-}
-
-function listText(list) {
+function listItems(list) {
   return [...list.querySelectorAll('li')]
-    .map((item) => `- ${item.textContent}`)
-    .join('\n');
+    .map((item) => item.textContent)
+    .filter((text) => text && !text.includes('표시됩니다') && !text.includes('없습니다'));
 }
 
 function appendDefinition(list, term, value) {
@@ -435,7 +483,7 @@ function createDetailSection(title, items) {
   const section = document.createElement('section');
   const heading = document.createElement('h3');
   const list = document.createElement('ul');
-  const visibleItems = items.filter(Boolean);
+  const visibleItems = Array.isArray(items) ? items.filter(Boolean) : [];
 
   heading.textContent = title;
   section.className = 'detail-section';
@@ -459,6 +507,10 @@ function createDetailSection(title, items) {
 
 function setStatus(message) {
   elements.status.textContent = message;
+}
+
+function setStage(message) {
+  elements.stage.textContent = message;
 }
 
 function startDurationTimer() {

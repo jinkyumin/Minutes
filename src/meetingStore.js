@@ -42,7 +42,8 @@ function normalizeRecord(record) {
     id: record?.id || createId(),
     meetingDateTime: record?.meetingDateTime || '',
     attendees: record?.attendees || '',
-    notes: record?.notes || '',
+    note: record?.note || record?.notes || '',
+    notes: record?.note || record?.notes || '',
     transcriptEntries: Array.isArray(record?.transcriptEntries)
       ? record.transcriptEntries
       : [],

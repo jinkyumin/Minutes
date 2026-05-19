@@ -65,6 +65,18 @@ test('normalizes missing optional record fields', () => {
   assert.deepEqual(saved.summary.actionItems, []);
 });
 
+test('normalizes note and keeps legacy notes readable', () => {
+  const store = createMeetingStore(createMemoryStorage());
+
+  const saved = store.saveRecord({
+    meetingDateTime: '2026-05-18T12:00',
+    notes: '기존 비고 내용',
+    summary: { overview: '개요' },
+  });
+
+  assert.equal(saved.note, '기존 비고 내용');
+});
+
 test('falls back to an empty list when storage contains invalid JSON', () => {
   const storage = createMemoryStorage();
   storage.setItem('meeting-minutes-records', '{not json');
