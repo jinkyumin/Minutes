@@ -26,6 +26,29 @@ export default async function handler(request, response) {
       },
       body: JSON.stringify({
         model: resolveModel(process.env.OPENAI_MODEL),
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'meeting_summary',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                overview: { type: 'string' },
+                keyPoints: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                actionItems: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['overview', 'keyPoints', 'actionItems'],
+            },
+          },
+        },
         input: [
           {
             role: 'system',
