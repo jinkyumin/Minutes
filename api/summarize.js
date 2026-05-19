@@ -25,7 +25,7 @@ export default async function handler(request, response) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'chat-latest',
+        model: resolveModel(process.env.OPENAI_MODEL),
         input: [
           {
             role: 'system',
@@ -60,6 +60,14 @@ export default async function handler(request, response) {
   } catch (error) {
     return response.status(500).json({ error: error.message || 'Summary failed.' });
   }
+}
+
+function resolveModel(model) {
+  if (!model || model === 'chat-latest') {
+    return 'gpt-5.2-chat-latest';
+  }
+
+  return model;
 }
 
 function parseOutputText(data) {

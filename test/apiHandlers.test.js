@@ -41,7 +41,7 @@ test('summarize API calls OpenAI and returns normalized summary', async () => {
     actionItems: ['할 일 1'],
   });
   assert.equal(capturedRequest.url, 'https://api.openai.com/v1/responses');
-  assert.equal(JSON.parse(capturedRequest.options.body).model, 'chat-latest');
+  assert.equal(JSON.parse(capturedRequest.options.body).model, 'gpt-5.2-chat-latest');
 
   restoreEnv('OPENAI_API_KEY', originalKey);
   restoreEnv('OPENAI_MODEL', originalModel);
