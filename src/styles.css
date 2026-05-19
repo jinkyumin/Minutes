@@ -127,9 +127,10 @@ h1 {
 
 .app-grid {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(320px, 0.85fr);
   gap: 18px;
   align-items: start;
+  min-width: 0;
 }
 
 .app-grid.history-collapsed {
@@ -137,6 +138,7 @@ h1 {
 }
 
 .panel {
+  min-width: 0;
   border: 1px solid #dce3e8;
   border-radius: 8px;
   background: #ffffff;
@@ -326,13 +328,15 @@ label {
   margin: 0;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
 
 .history-item {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 36px;
+  grid-template-columns: minmax(0, 1fr) 36px;
   gap: 8px;
+  min-width: 0;
 }
 
 .history-list button {
@@ -343,8 +347,10 @@ label {
 
 .history-record-button {
   width: 100%;
+  min-width: 0;
   padding: 13px;
   text-align: left;
+  overflow: hidden;
 }
 
 .history-record-button.selected {
@@ -355,6 +361,10 @@ label {
 .history-record-button strong,
 .history-record-button span {
   display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-record-button span {
