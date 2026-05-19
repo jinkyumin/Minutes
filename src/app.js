@@ -2,6 +2,7 @@ import { summarizeMeeting } from './summary.js';
 import { createMeetingStore } from './meetingStore.js';
 import { createRemoteMeetingStore } from './remoteMeetingStore.js';
 import { buildSummaryPayload, formatMeetingMarkdown } from './meetingPayload.js';
+import { appendTranscriptEntry, cleanTranscriptEntries, normalizeSpeechText } from './transcriptProcessing.js';
 
 const NOTION_DATABASE_KEY = 'meeting-minutes-notion-database-id';
 const SpeechRecognition =
@@ -16,6 +17,7 @@ const state = {
   selectedRecordId: null,
   currentRecord: null,
   isHistoryCollapsed: false,
+  interimTranscript: '',
 };
 
 const meetingStore = createRemoteMeetingStore(createMeetingStore(window.localStorage));
@@ -107,6 +109,7 @@ function createRecognition() {
 
 function startMeeting() {
   state.transcriptEntries = [];
+  state.interimTranscript = '';
   state.currentRecord = null;
   state.selectedRecordId = null;
   state.isMeetingActive = true;
@@ -143,6 +146,7 @@ async function endMeeting() {
   state.isMeetingActive = false;
   state.isPaused = false;
   state.recognition?.stop();
+  flushInterimTranscript();
   stopDurationTimer();
   elements.liveText.textContent = '회의가 종료되었습니다. 요약을 생성합니다.';
   setStatus('요약 생성 중');
@@ -169,6 +173,7 @@ function resetMeeting() {
   }
 
   state.transcriptEntries = [];
+  state.interimTranscript = '';
   state.isMeetingActive = false;
   state.isPaused = false;
   state.startedAt = null;
@@ -198,18 +203,16 @@ function handleRecognitionResult(event) {
     if (!text) continue;
 
     if (result.isFinal) {
-      state.transcriptEntries.push({
-        id: crypto.randomUUID(),
-        text,
-        time: new Date(),
-      });
+      appendTranscriptEntry(state.transcriptEntries, text);
+      state.interimTranscript = '';
     } else {
       interimText += text;
     }
   }
 
+  state.interimTranscript = normalizeSpeechText(interimText);
   elements.liveText.textContent =
-    interimText || '말을 멈추면 확정된 문장이 전사 목록에 추가됩니다.';
+    state.interimTranscript || '말을 멈추면 확정된 문장이 전사 목록에 추가됩니다.';
   render();
 }
 
@@ -220,6 +223,13 @@ function handleRecognitionError(event) {
       : `음성 인식 오류: ${event.error}`;
 
   setStatus(message);
+}
+
+function flushInterimTranscript() {
+  if (!state.interimTranscript) return;
+
+  appendTranscriptEntry(state.transcriptEntries, state.interimTranscript);
+  state.interimTranscript = '';
 }
 
 async function summarizeWithLlm(record) {
@@ -251,8 +261,8 @@ function buildSummaryEntries() {
   const noteText = elements.note.value.trim();
 
   return noteText
-    ? [...state.transcriptEntries, { id: 'note', text: noteText, time: new Date() }]
-    : state.transcriptEntries;
+    ? [...cleanTranscriptEntries(state.transcriptEntries), { id: 'note', text: noteText, time: new Date() }]
+    : cleanTranscriptEntries(state.transcriptEntries);
 }
 
 function buildCurrentRecord({ summary }) {
@@ -261,7 +271,7 @@ function buildCurrentRecord({ summary }) {
     meetingDateTime: elements.meetingDateTime.value,
     attendees: elements.attendees.value.trim(),
     note: elements.note.value.trim(),
-    transcriptEntries: state.transcriptEntries,
+    transcriptEntries: cleanTranscriptEntries(state.transcriptEntries),
     summary,
   };
 }

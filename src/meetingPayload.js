@@ -1,17 +1,19 @@
+import { cleanTranscriptEntries } from './transcriptProcessing.js';
+
 export function buildSummaryPayload(record) {
   return {
     title: record?.title || '',
     meetingDateTime: record?.meetingDateTime || '',
     attendees: record?.attendees || '',
     note: record?.note || record?.notes || '',
-    transcript: normalizeTranscript(record?.transcriptEntries),
+    transcript: normalizeTranscript(cleanTranscriptEntries(record?.transcriptEntries)),
   };
 }
 
 export function formatMeetingMarkdown(record) {
   const summary = record?.summary || {};
   const transcriptEntries = Array.isArray(record?.transcriptEntries)
-    ? record.transcriptEntries
+    ? cleanTranscriptEntries(record.transcriptEntries)
     : [];
 
   return [
