@@ -114,6 +114,52 @@ test('summarize API calls Gemini when selected', async () => {
   globalThis.fetch = originalFetch;
 });
 
+test('summarize API repairs Gemini JSON with raw multiline strings', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+
+  globalThis.fetch = async () => jsonResponse({
+    candidates: [
+      {
+        content: {
+          parts: [
+            {
+              text: '{\n"overview": "첫 줄\n둘째 줄",\n"keyPoints": ["핵심"],\n"actionItems": []\n}',
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const response = createResponse();
+  await summarizeHandler(
+    createRequest('POST', {
+      transcript: '프로젝트 일정을 논의했습니다.',
+      note: '예산 확인 필요',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    overview: '첫 줄\n둘째 줄',
+    keyPoints: ['핵심'],
+    actionItems: [],
+  });
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  globalThis.fetch = originalFetch;
+});
+
 test('summarize API rejects missing OpenAI key', async () => {
   const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.OPENAI_API_KEY;

@@ -345,9 +345,8 @@ function renderHistory() {
     const menuButton = document.createElement('button');
     const menu = document.createElement('div');
     const deleteButton = document.createElement('button');
-    const title = document.createElement('strong');
-    const meta = document.createElement('span');
-    const preview = document.createElement('p');
+    const date = document.createElement('strong');
+    const title = document.createElement('span');
 
     item.className = 'history-item';
     selectButton.type = 'button';
@@ -366,11 +365,10 @@ function renderHistory() {
     deleteButton.className = 'delete-record-button';
     deleteButton.textContent = '삭제';
 
-    title.textContent = formatMeetingDate(record.meetingDateTime);
-    meta.textContent = record.attendees || '참석자 미입력';
-    preview.textContent = record.summary.overview || '요약 없음';
+    date.textContent = formatMeetingDate(record.meetingDateTime);
+    title.textContent = createRecordTitle(record);
 
-    selectButton.append(title, meta, preview);
+    selectButton.append(date, title);
     menu.append(deleteButton);
     item.append(selectButton, menuButton, menu);
     elements.historyList.append(item);
@@ -606,6 +604,15 @@ function formatMeetingDate(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function createRecordTitle(record) {
+  const overview = record.summary?.overview?.trim();
+  if (overview) return overview.split('\n')[0];
+
+  if (record.attendees) return `${record.attendees} 회의`;
+
+  return '제목 없는 회의록';
 }
 
 function toDate(value) {

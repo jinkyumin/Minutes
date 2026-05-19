@@ -353,21 +353,18 @@ label {
 }
 
 .history-record-button strong,
-.history-record-button span,
-.history-record-button p {
+.history-record-button span {
   display: block;
 }
 
 .history-record-button span {
   margin-top: 4px;
   color: #6b7782;
-  font-size: 0.88rem;
-}
-
-.history-record-button p {
-  margin: 8px 0 0;
-  color: #52616c;
-  line-height: 1.45;
+  font-size: 0.82rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-menu-button {

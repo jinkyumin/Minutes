@@ -133,7 +133,7 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const data = await geminiResponse.json();
-  return normalizeSummary(JSON.parse(parseGeminiOutput(data)));
+  return normalizeSummary(parseJsonObject(parseGeminiOutput(data)));
 }
 
 function buildPrompt(body, transcript, note) {
@@ -179,6 +179,59 @@ function parseGeminiOutput(data) {
   return data.candidates?.[0]?.content?.parts
     ?.map((part) => part.text || '')
     .join('') || '{}';
+}
+
+function parseJsonObject(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return JSON.parse(escapeRawControlCharacters(text));
+  }
+}
+
+function escapeRawControlCharacters(text) {
+  let inString = false;
+  let isEscaped = false;
+  let output = '';
+
+  for (const character of text) {
+    if (isEscaped) {
+      output += character;
+      isEscaped = false;
+      continue;
+    }
+
+    if (character === '\\') {
+      output += character;
+      isEscaped = true;
+      continue;
+    }
+
+    if (character === '"') {
+      inString = !inString;
+      output += character;
+      continue;
+    }
+
+    if (inString && character === '\n') {
+      output += '\\n';
+      continue;
+    }
+
+    if (inString && character === '\r') {
+      output += '\\r';
+      continue;
+    }
+
+    if (inString && character === '\t') {
+      output += '\\t';
+      continue;
+    }
+
+    output += character;
+  }
+
+  return output;
 }
 
 function normalizeSummary(summary) {
