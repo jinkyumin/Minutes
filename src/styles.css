@@ -84,6 +84,10 @@ h1 {
   line-height: 1.05;
 }
 
+h1 span {
+  font-size: 0.55em;
+}
+
 .header-status {
   display: flex;
   align-items: center;

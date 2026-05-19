@@ -124,7 +124,7 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
   process.env.LLM_PROVIDER = 'gemini';
   process.env.GEMINI_API_KEY = 'test-gemini-key';
   process.env.GEMINI_MODEL = 'gemini-2.5-flash';
-  process.env.GEMINI_FALLBACK_MODEL = 'gemini-1.5-flash';
+  process.env.GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite';
 
   const urls = [];
   globalThis.fetch = async (url) => {
@@ -170,7 +170,7 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
   });
   assert.equal(urls.length, 2);
   assert.match(urls[0], /gemini-2\.5-flash/);
-  assert.match(urls[1], /gemini-1\.5-flash/);
+  assert.match(urls[1], /gemini-2\.5-flash-lite/);
 
   restoreEnv('LLM_PROVIDER', originalProvider);
   restoreEnv('GEMINI_API_KEY', originalKey);
@@ -217,6 +217,51 @@ test('summarize API repairs Gemini JSON with raw multiline strings', async () =>
     overview: '첫 줄\n둘째 줄',
     keyPoints: ['핵심'],
     actionItems: [],
+  });
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  globalThis.fetch = originalFetch;
+});
+
+test('summarize API salvages malformed Gemini JSON instead of failing', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+
+  globalThis.fetch = async () => jsonResponse({
+    candidates: [
+      {
+        content: {
+          parts: [
+            {
+              text: '{"overview":"SAP "Public Cloud" 도입 방향을 논의했습니다.\\n재무 통합과 공시 대응이 핵심입니다.","keyPoints":["퍼블릭과 프라이빗 비교","DDA 재검토 필요"],"actionItems":["자료 공유"]}',
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const response = createResponse();
+  await summarizeHandler(
+    createRequest('POST', {
+      transcript: 'SAP public cloud discussion',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    overview: 'SAP "Public Cloud" 도입 방향을 논의했습니다.\n재무 통합과 공시 대응이 핵심입니다.',
+    keyPoints: ['퍼블릭과 프라이빗 비교', 'DDA 재검토 필요'],
+    actionItems: ['자료 공유'],
   });
 
   restoreEnv('LLM_PROVIDER', originalProvider);

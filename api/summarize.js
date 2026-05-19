@@ -89,7 +89,7 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash';
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite';
   const geminiResponse = await requestGeminiSummary(model, body, transcript, note);
 
   if (!geminiResponse.ok && geminiResponse.status === 503 && fallbackModel !== model) {
@@ -100,7 +100,7 @@ async function summarizeWithGemini(body, transcript, note) {
     }
 
     const fallbackData = await fallbackResponse.json();
-    return normalizeSummary(parseJsonObject(parseGeminiOutput(fallbackData)));
+    return parseGeminiSummary(fallbackData);
   }
 
   if (!geminiResponse.ok) {
@@ -108,7 +108,7 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const data = await geminiResponse.json();
-  return normalizeSummary(parseJsonObject(parseGeminiOutput(data)));
+  return parseGeminiSummary(data);
 }
 
 async function requestGeminiSummary(model, body, transcript, note) {
@@ -198,12 +198,51 @@ function parseGeminiOutput(data) {
     .join('') || '{}';
 }
 
+function parseGeminiSummary(data) {
+  const text = parseGeminiOutput(data);
+
+  try {
+    return normalizeSummary(parseJsonObject(text));
+  } catch {
+    return normalizeSummary(parseLooseSummary(text));
+  }
+}
+
 function parseJsonObject(text) {
   try {
     return JSON.parse(text);
   } catch {
     return JSON.parse(escapeRawControlCharacters(text));
   }
+}
+
+function parseLooseSummary(text) {
+  const cleanedText = text
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  return {
+    overview: extractLooseString(cleanedText, 'overview') || cleanedText,
+    keyPoints: extractLooseArray(cleanedText, 'keyPoints'),
+    actionItems: extractLooseArray(cleanedText, 'actionItems'),
+  };
+}
+
+function extractLooseString(text, fieldName) {
+  const match = text.match(new RegExp(`"${fieldName}"\\s*:\\s*"([\\s\\S]*?)"\\s*,\\s*"(keyPoints|actionItems)"\\s*:`));
+
+  return match?.[1]
+    ?.replace(/\\"/g, '"')
+    .replace(/\\n/g, '\n')
+    .trim() || '';
+}
+
+function extractLooseArray(text, fieldName) {
+  const match = text.match(new RegExp(`"${fieldName}"\\s*:\\s*\\[([\\s\\S]*?)\\]`));
+  if (!match) return [];
+
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1].trim()).filter(Boolean);
 }
 
 function escapeRawControlCharacters(text) {
