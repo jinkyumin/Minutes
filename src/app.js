@@ -146,7 +146,7 @@ async function endMeeting() {
   const draftRecord = buildCurrentRecord({
     summary: summarizeMeeting(buildSummaryEntries()),
   });
-  const summary = await summarizeWithChatGPT(draftRecord);
+  const { summary, source } = await summarizeWithChatGPT(draftRecord);
   const savedRecord = meetingStore.saveRecord({ ...draftRecord, summary });
 
   state.currentRecord = savedRecord;
@@ -154,7 +154,7 @@ async function endMeeting() {
   renderSummary(summary);
   renderHistory();
   renderSelectedRecord();
-  setStatus('요약 완료');
+  setStatus(source === 'chatgpt' ? 'ChatGPT 요약 완료' : '로컬 요약 사용');
   render();
 }
 
@@ -204,10 +204,15 @@ async function summarizeWithChatGPT(record) {
       throw new Error(await response.text());
     }
 
-    return await response.json();
+    return {
+      summary: await response.json(),
+      source: 'chatgpt',
+    };
   } catch {
-    setStatus('로컬 요약 사용');
-    return summarizeMeeting(buildSummaryEntries());
+    return {
+      summary: summarizeMeeting(buildSummaryEntries()),
+      source: 'local',
+    };
   }
 }
 
