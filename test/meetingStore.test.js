@@ -100,6 +100,18 @@ test('normalizes note and keeps legacy notes readable', () => {
   assert.equal(saved.note, '기존 비고 내용');
 });
 
+test('normalizes meeting title', () => {
+  const store = createMeetingStore(createMemoryStorage());
+
+  const saved = store.saveRecord({
+    title: 'SAP public review',
+    meetingDateTime: '2026-05-18T12:00',
+    summary: { overview: 'overview' },
+  });
+
+  assert.equal(saved.title, 'SAP public review');
+});
+
 test('falls back to an empty list when storage contains invalid JSON', () => {
   const storage = createMemoryStorage();
   storage.setItem('meeting-minutes-records', '{not json');

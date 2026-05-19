@@ -5,6 +5,7 @@ import { buildSummaryPayload, formatMeetingMarkdown } from '../src/meetingPayloa
 
 test('builds summary payload from transcript and note', () => {
   const payload = buildSummaryPayload({
+    title: 'SAP public review',
     meetingDateTime: '2026-05-19T09:00',
     attendees: '김민수, 이지연',
     note: '예산 이슈는 별도 확인 필요',
@@ -15,6 +16,7 @@ test('builds summary payload from transcript and note', () => {
   });
 
   assert.deepEqual(payload, {
+    title: 'SAP public review',
     meetingDateTime: '2026-05-19T09:00',
     attendees: '김민수, 이지연',
     note: '예산 이슈는 별도 확인 필요',
@@ -27,6 +29,7 @@ test('builds summary payload from transcript and note', () => {
 
 test('formats meeting markdown for copy and Notion export', () => {
   const markdown = formatMeetingMarkdown({
+    title: 'SAP public review',
     meetingDateTime: '2026-05-19T09:00',
     attendees: '김민수, 이지연',
     note: '회의 중 확인한 참고 메모',
@@ -38,7 +41,8 @@ test('formats meeting markdown for copy and Notion export', () => {
     },
   });
 
-  assert.match(markdown, /# 회의록/);
+  assert.match(markdown, /SAP public review/);
+  assert.match(markdown, /# SAP public review/);
   assert.match(markdown, /## Note\n회의 중 확인한 참고 메모/);
   assert.match(markdown, /## 할 일\n- 금요일까지 결과 공유/);
   assert.match(markdown, /## 전사\n- 담당자는 금요일까지 결과를 공유합니다\./);

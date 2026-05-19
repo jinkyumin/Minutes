@@ -114,6 +114,71 @@ test('summarize API calls Gemini when selected', async () => {
   globalThis.fetch = originalFetch;
 });
 
+test('summarize API retries Gemini 503 with fallback model', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFallbackModel = process.env.GEMINI_FALLBACK_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+  process.env.GEMINI_FALLBACK_MODEL = 'gemini-1.5-flash';
+
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+
+    if (urls.length === 1) {
+      return {
+        ok: false,
+        status: 503,
+        async text() {
+          return JSON.stringify({ error: { code: 503, message: 'model overloaded' } });
+        },
+      };
+    }
+
+    return jsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  overview: 'fallback summary',
+                  keyPoints: ['fallback key point'],
+                  actionItems: [],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+  };
+
+  const response = createResponse();
+  await summarizeHandler(createRequest('POST', { transcript: 'meeting text' }), response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    overview: 'fallback summary',
+    keyPoints: ['fallback key point'],
+    actionItems: [],
+  });
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /gemini-2\.5-flash/);
+  assert.match(urls[1], /gemini-1\.5-flash/);
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  restoreEnv('GEMINI_FALLBACK_MODEL', originalFallbackModel);
+  globalThis.fetch = originalFetch;
+});
+
 test('summarize API repairs Gemini JSON with raw multiline strings', async () => {
   const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.GEMINI_API_KEY;

@@ -25,6 +25,7 @@ const elements = {
   status: document.querySelector('#status'),
   supportNotice: document.querySelector('#supportNotice'),
   meetingDuration: document.querySelector('#meetingDuration'),
+  meetingTitle: document.querySelector('#meetingTitle'),
   meetingDateTime: document.querySelector('#meetingDateTime'),
   attendees: document.querySelector('#attendees'),
   note: document.querySelector('#note'),
@@ -173,6 +174,7 @@ function resetMeeting() {
   state.currentRecord = null;
   state.selectedRecordId = null;
   stopDurationTimer();
+  elements.meetingTitle.value = '';
   elements.meetingDateTime.value = toDateTimeInputValue(new Date());
   elements.attendees.value = '';
   elements.note.value = '';
@@ -254,6 +256,7 @@ function buildSummaryEntries() {
 
 function buildCurrentRecord({ summary }) {
   return {
+    title: elements.meetingTitle.value.trim(),
     meetingDateTime: elements.meetingDateTime.value,
     attendees: elements.attendees.value.trim(),
     note: elements.note.value.trim(),
@@ -441,6 +444,7 @@ function selectHistoryRecord(recordId) {
   }));
   state.isMeetingActive = false;
   state.isPaused = false;
+  elements.meetingTitle.value = record.title || '';
   elements.meetingDateTime.value = record.meetingDateTime;
   elements.attendees.value = record.attendees;
   elements.note.value = record.note;
@@ -607,6 +611,8 @@ function formatMeetingDate(value) {
 }
 
 function createRecordTitle(record) {
+  if (record.title) return record.title;
+
   const overview = record.summary?.overview?.trim();
   if (overview) return overview.split('\n')[0];
 

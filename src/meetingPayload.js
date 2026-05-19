@@ -1,5 +1,6 @@
 export function buildSummaryPayload(record) {
   return {
+    title: record?.title || '',
     meetingDateTime: record?.meetingDateTime || '',
     attendees: record?.attendees || '',
     note: record?.note || record?.notes || '',
@@ -14,8 +15,9 @@ export function formatMeetingMarkdown(record) {
     : [];
 
   return [
-    '# 회의록',
+    `# ${record?.title || '회의록'}`,
     '',
+    `- 회의 제목: ${record?.title || '미입력'}`,
     `- 회의 일시: ${record?.meetingDateTime || '미입력'}`,
     `- 참석자: ${record?.attendees || '미입력'}`,
     '',

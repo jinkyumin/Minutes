@@ -89,7 +89,30 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const geminiResponse = await fetch(
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash';
+  const geminiResponse = await requestGeminiSummary(model, body, transcript, note);
+
+  if (!geminiResponse.ok && geminiResponse.status === 503 && fallbackModel !== model) {
+    const fallbackResponse = await requestGeminiSummary(fallbackModel, body, transcript, note);
+
+    if (!fallbackResponse.ok) {
+      throw new Error(await fallbackResponse.text());
+    }
+
+    const fallbackData = await fallbackResponse.json();
+    return normalizeSummary(parseJsonObject(parseGeminiOutput(fallbackData)));
+  }
+
+  if (!geminiResponse.ok) {
+    throw new Error(await geminiResponse.text());
+  }
+
+  const data = await geminiResponse.json();
+  return normalizeSummary(parseJsonObject(parseGeminiOutput(data)));
+}
+
+async function requestGeminiSummary(model, body, transcript, note) {
+  return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
@@ -127,13 +150,6 @@ async function summarizeWithGemini(body, transcript, note) {
       }),
     },
   );
-
-  if (!geminiResponse.ok) {
-    throw new Error(await geminiResponse.text());
-  }
-
-  const data = await geminiResponse.json();
-  return normalizeSummary(parseJsonObject(parseGeminiOutput(data)));
 }
 
 function buildPrompt(body, transcript, note) {
@@ -147,6 +163,7 @@ function buildPrompt(body, transcript, note) {
     '할 일은 명확한 후속 조치만 작성하고 담당자나 기한이 있으면 포함하세요.',
     '단순 질문, 잡담, 미완성 문장은 할 일로 만들지 마세요.',
     '',
+    `회의 제목: ${body.title || '미입력'}`,
     `회의 일시: ${body.meetingDateTime || '미입력'}`,
     `참석자: ${body.attendees || '미입력'}`,
     '',

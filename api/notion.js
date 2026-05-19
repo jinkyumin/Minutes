@@ -54,6 +54,8 @@ export default async function handler(request, response) {
 }
 
 function createTitle(record) {
+  if (record?.title) return record.title;
+
   const date = record?.meetingDateTime || '미입력';
   return `회의록 ${date}`;
 }

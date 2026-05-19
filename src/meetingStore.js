@@ -48,6 +48,7 @@ function normalizeRecord(record) {
 
   return {
     id: record?.id || createId(),
+    title: record?.title || '',
     meetingDateTime: record?.meetingDateTime || '',
     attendees: record?.attendees || '',
     note: record?.note || record?.notes || '',
