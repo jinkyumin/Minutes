@@ -5,10 +5,6 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: 'Only POST is supported.' });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return response.status(500).json({ error: 'OPENAI_API_KEY is not configured.' });
-  }
-
   const body = typeof request.body === 'string' ? JSON.parse(request.body || '{}') : request.body || {};
   const transcript = String(body.transcript || '').trim();
   const note = String(body.note || '').trim();
@@ -18,74 +14,141 @@ export default async function handler(request, response) {
   }
 
   try {
-    const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: resolveModel(process.env.OPENAI_MODEL),
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'meeting_summary',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                overview: { type: 'string' },
-                keyPoints: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                actionItems: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-              },
-              required: ['overview', 'keyPoints', 'actionItems'],
-            },
-          },
-        },
-        input: [
-          {
-            role: 'system',
-            content:
-              'You summarize Korean meeting minutes. Return only strict JSON with overview, keyPoints, and actionItems.',
-          },
-          {
-            role: 'user',
-            content: [
-              `회의 일시: ${body.meetingDateTime || '미입력'}`,
-              `참석자: ${body.attendees || '미입력'}`,
-              '',
-              `Note:\n${note || '없음'}`,
-              '',
-              `전사:\n${transcript || '없음'}`,
-              '',
-              'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"]}',
-            ].join('\n'),
-          },
-        ],
-      }),
-    });
+    const summary =
+      process.env.LLM_PROVIDER === 'gemini'
+        ? await summarizeWithGemini(body, transcript, note)
+        : await summarizeWithOpenAI(body, transcript, note);
 
-    if (!openAiResponse.ok) {
-      return response.status(openAiResponse.status).json({
-        error: await openAiResponse.text(),
-      });
-    }
-
-    const data = await openAiResponse.json();
-    return response.status(200).json(normalizeSummary(parseOutputText(data)));
+    return response.status(200).json(summary);
   } catch (error) {
     return response.status(500).json({ error: error.message || 'Summary failed.' });
   }
 }
 
-function resolveModel(model) {
+async function summarizeWithOpenAI(body, transcript, note) {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is not configured.');
+  }
+
+  const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: resolveOpenAiModel(process.env.OPENAI_MODEL),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'meeting_summary',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              overview: { type: 'string' },
+              keyPoints: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              actionItems: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+            required: ['overview', 'keyPoints', 'actionItems'],
+          },
+        },
+      },
+      input: [
+        {
+          role: 'system',
+          content:
+            'You summarize Korean meeting minutes. Return only strict JSON with overview, keyPoints, and actionItems.',
+        },
+        {
+          role: 'user',
+          content: buildPrompt(body, transcript, note),
+        },
+      ],
+    }),
+  });
+
+  if (!openAiResponse.ok) {
+    throw new Error(await openAiResponse.text());
+  }
+
+  const data = await openAiResponse.json();
+  return normalizeSummary(parseOpenAiOutput(data));
+}
+
+async function summarizeWithGemini(body, transcript, note) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured.');
+  }
+
+  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              overview: { type: 'STRING' },
+              keyPoints: {
+                type: 'ARRAY',
+                items: { type: 'STRING' },
+              },
+              actionItems: {
+                type: 'ARRAY',
+                items: { type: 'STRING' },
+              },
+            },
+            required: ['overview', 'keyPoints', 'actionItems'],
+          },
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: buildPrompt(body, transcript, note) }],
+          },
+        ],
+      }),
+    },
+  );
+
+  if (!geminiResponse.ok) {
+    throw new Error(await geminiResponse.text());
+  }
+
+  const data = await geminiResponse.json();
+  return normalizeSummary(JSON.parse(parseGeminiOutput(data)));
+}
+
+function buildPrompt(body, transcript, note) {
+  return [
+    '다음 한국어 회의 내용을 회의록으로 정리하세요.',
+    '반드시 JSON만 반환하세요.',
+    'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"]}',
+    '',
+    `회의 일시: ${body.meetingDateTime || '미입력'}`,
+    `참석자: ${body.attendees || '미입력'}`,
+    '',
+    `Note:\n${note || '없음'}`,
+    '',
+    `전사:\n${transcript || '없음'}`,
+  ].join('\n');
+}
+
+function resolveOpenAiModel(model) {
   if (!model || model === 'chat-latest') {
     return 'gpt-5.2-chat-latest';
   }
@@ -93,7 +156,7 @@ function resolveModel(model) {
   return model;
 }
 
-function parseOutputText(data) {
+function parseOpenAiOutput(data) {
   const text =
     data.output_text ||
     data.output?.flatMap((item) => item.content || [])
@@ -102,6 +165,12 @@ function parseOutputText(data) {
     '{}';
 
   return JSON.parse(text);
+}
+
+function parseGeminiOutput(data) {
+  return data.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || '')
+    .join('') || '{}';
 }
 
 function normalizeSummary(summary) {

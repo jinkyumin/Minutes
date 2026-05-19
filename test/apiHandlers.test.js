@@ -50,6 +50,65 @@ test('summarize API calls OpenAI and returns normalized summary', async () => {
   globalThis.fetch = originalFetch;
 });
 
+test('summarize API calls Gemini when selected', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+
+  let capturedRequest;
+  globalThis.fetch = async (url, options) => {
+    capturedRequest = { url, options };
+    return jsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  overview: 'Gemini 회의 개요입니다.',
+                  keyPoints: ['Gemini 핵심 1'],
+                  actionItems: ['Gemini 할 일 1'],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+  };
+
+  const response = createResponse();
+  await summarizeHandler(
+    createRequest('POST', {
+      transcript: '프로젝트 일정을 논의했습니다.',
+      note: '예산 확인 필요',
+      attendees: '김민수',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), {
+    overview: 'Gemini 회의 개요입니다.',
+    keyPoints: ['Gemini 핵심 1'],
+    actionItems: ['Gemini 할 일 1'],
+  });
+  assert.equal(
+    capturedRequest.url,
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-gemini-key',
+  );
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  globalThis.fetch = originalFetch;
+});
+
 test('summarize API rejects missing OpenAI key', async () => {
   const originalKey = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
