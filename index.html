@@ -25,12 +25,12 @@
 
       <section id="appGrid" class="app-grid">
         <aside class="panel history-panel">
-          <div class="panel-header">
+          <button id="openHistoryButton" class="history-open-button" type="button" title="회의록 목록 열기">열기</button>
+          <div class="panel-title-bar">
             <h2 class="history-content">회의록 목록</h2>
             <button id="toggleHistoryButton" class="collapse-button" type="button" title="회의록 목록 숨기기">‹</button>
           </div>
-          <div class="collapsed-label">회의록 목록</div>
-          <div class="history-content">
+          <div class="panel-body history-content">
             <div class="panel-header compact">
               <span id="historyCount">0건</span>
             </div>
@@ -41,81 +41,85 @@
         </aside>
 
         <article class="panel">
-          <div class="panel-header">
+          <div class="panel-title-bar">
             <h2>회의 준비</h2>
             <button id="newMeetingButton" type="button">새 회의</button>
           </div>
 
-          <section class="meeting-fields" aria-label="회의 기본 정보">
-            <label class="full-field">
-              회의록 제목
-              <input id="meetingTitle" placeholder="예: SAP 퍼블릭 검토 회의" />
-            </label>
-            <label>
-              회의 일시
-              <input id="meetingDateTime" type="datetime-local" />
-            </label>
-            <label>
-              참석자
-              <input id="attendees" placeholder="예: 김민수, 이지연" />
-            </label>
-          </section>
+          <div class="panel-body">
+            <section class="meeting-fields" aria-label="회의 기본 정보">
+              <label class="full-field">
+                회의록 제목
+                <input id="meetingTitle" placeholder="예: SAP 퍼블릭 검토 회의" />
+              </label>
+              <label>
+                회의 일시
+                <input id="meetingDateTime" type="datetime-local" />
+              </label>
+              <label>
+                참석자
+                <input id="attendees" placeholder="예: 김민수, 이지연" />
+              </label>
+            </section>
 
-          <div class="controls" aria-label="회의 제어">
-            <button id="startButton" class="primary" type="button">회의 시작</button>
-            <button id="pauseButton" type="button" disabled>일시정지</button>
-            <button id="endButton" class="danger" type="button" disabled>회의 종료</button>
-          </div>
-
-          <section class="transcript-panel" aria-label="실시간 전사">
-            <div class="section-title">
-              <h3>실시간 전사</h3>
-              <span id="transcriptCount">0개 문장</span>
+            <div class="controls" aria-label="회의 제어">
+              <button id="startButton" class="primary" type="button">회의 시작</button>
+              <button id="pauseButton" type="button" disabled>일시정지</button>
+              <button id="endButton" class="danger" type="button" disabled>회의 종료</button>
             </div>
-            <div id="liveText" class="live-text">회의를 시작하면 말한 내용이 여기에 표시됩니다.</div>
-            <ol id="transcriptList" class="transcript-list">
-              <li class="empty-state">아직 확정된 전사 문장이 없습니다.</li>
-            </ol>
-          </section>
 
-          <label class="note-field">
-            Note
-            <textarea
-              id="note"
-              placeholder="회의 중 남길 메모나 외부 전사 텍스트를 입력하세요."
-            ></textarea>
-            <span>입력한 내용은 별도 버튼 없이 회의 결과 요약에 자동 반영됩니다.</span>
-          </label>
+            <section class="transcript-panel" aria-label="실시간 전사">
+              <div class="section-title">
+                <h3>실시간 전사</h3>
+                <span id="transcriptCount">0개 문장</span>
+              </div>
+              <div id="liveText" class="live-text">회의를 시작하면 말한 내용이 여기에 표시됩니다.</div>
+              <ol id="transcriptList" class="transcript-list">
+                <li class="empty-state">아직 확정된 전사 문장이 없습니다.</li>
+              </ol>
+            </section>
+
+            <label class="note-field">
+              Note
+              <textarea
+                id="note"
+                placeholder="회의 중 남길 메모나 외부 전사 텍스트를 입력하세요."
+              ></textarea>
+              <span>입력한 내용은 별도 버튼 없이 회의 결과 요약에 자동 반영됩니다.</span>
+            </label>
+          </div>
         </article>
 
         <aside class="panel result-panel">
-          <div class="panel-header">
+          <div class="panel-title-bar">
             <h2>회의 결과</h2>
           </div>
 
-          <section class="summary-section">
-            <h3>요약</h3>
-            <p id="summaryOverview" class="summary-overview">회의 종료 후 요약이 표시됩니다.</p>
-          </section>
+          <div class="panel-body">
+            <section class="summary-section">
+              <h3>요약</h3>
+              <p id="summaryOverview" class="summary-overview">회의 종료 후 요약이 표시됩니다.</p>
+            </section>
 
-          <section class="summary-section">
-            <h3>핵심 내용</h3>
-            <ul id="keyPoints" class="summary-list">
-              <li class="empty-state">회의 종료 후 핵심 내용이 표시됩니다.</li>
-            </ul>
-          </section>
+            <section class="summary-section">
+              <h3>핵심 내용</h3>
+              <ul id="keyPoints" class="summary-list">
+                <li class="empty-state">회의 종료 후 핵심 내용이 표시됩니다.</li>
+              </ul>
+            </section>
 
-          <section class="summary-section">
-            <h3>할 일</h3>
-            <ul id="actionItems" class="summary-list">
-              <li class="empty-state">회의 종료 후 할 일이 표시됩니다.</li>
-            </ul>
-          </section>
+            <section class="summary-section">
+              <h3>할 일</h3>
+              <ul id="actionItems" class="summary-list">
+                <li class="empty-state">회의 종료 후 할 일이 표시됩니다.</li>
+              </ul>
+            </section>
 
-          <div class="result-actions">
-            <button id="copySummaryButton" type="button">회의록 복사</button>
-            <button id="sendNotionButton" class="notion" type="button" disabled>Notion으로 보내기</button>
-            <button id="notionSettingsButton" class="icon-button" type="button" aria-label="Notion 설정" title="Notion 설정">⚙</button>
+            <div class="result-actions">
+              <button id="copySummaryButton" type="button">회의록 복사</button>
+              <button id="sendNotionButton" class="notion" type="button" disabled>Notion으로 보내기</button>
+              <button id="notionSettingsButton" class="icon-button" type="button" aria-label="Notion 설정" title="Notion 설정">⚙</button>
+            </div>
           </div>
         </aside>
       </section>

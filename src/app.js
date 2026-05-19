@@ -50,6 +50,7 @@ const elements = {
   saveNotionSettingsButton: document.querySelector('#saveNotionSettingsButton'),
   testNotionButton: document.querySelector('#testNotionButton'),
   toggleHistoryButton: document.querySelector('#toggleHistoryButton'),
+  openHistoryButton: document.querySelector('#openHistoryButton'),
   historyCount: document.querySelector('#historyCount'),
   historyList: document.querySelector('#historyList'),
 };
@@ -86,6 +87,7 @@ function bindEvents() {
   elements.saveNotionSettingsButton.addEventListener('click', saveNotionSettings);
   elements.testNotionButton.addEventListener('click', testNotionConnection);
   elements.toggleHistoryButton.addEventListener('click', toggleHistory);
+  elements.openHistoryButton.addEventListener('click', toggleHistory);
   elements.historyList.addEventListener('click', handleHistoryClick);
   document.addEventListener('click', closeHistoryMenus);
 }
@@ -278,10 +280,10 @@ function buildCurrentRecord({ summary }) {
 
 function render() {
   elements.appGrid.classList.toggle('history-collapsed', state.isHistoryCollapsed);
-  elements.toggleHistoryButton.textContent = state.isHistoryCollapsed ? '›' : '‹';
-  elements.toggleHistoryButton.title = state.isHistoryCollapsed
-    ? '회의록 목록 보이기'
-    : '회의록 목록 숨기기';
+  elements.toggleHistoryButton.textContent = '‹';
+  elements.toggleHistoryButton.title = '회의록 목록 숨기기';
+  elements.openHistoryButton.textContent = '열기';
+  elements.openHistoryButton.title = '회의록 목록 열기';
   elements.startButton.disabled = state.isMeetingActive || !SpeechRecognition;
   elements.pauseButton.disabled = !state.isMeetingActive;
   elements.endButton.disabled = !state.isMeetingActive;
