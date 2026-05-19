@@ -80,12 +80,10 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(2.25rem, 5vw, 4rem);
+  font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive;
+  font-size: clamp(1.25rem, 2.5vw, 2rem);
+  font-weight: 500;
   line-height: 1.05;
-}
-
-h1 span {
-  font-size: 0.55em;
 }
 
 .header-status {
