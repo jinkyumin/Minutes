@@ -18,3 +18,18 @@ test('includes old version page in production build inputs', async () => {
   const viteConfig = await readFile('vite.config.js', 'utf8');
   assert.match(viteConfig, /old\.html/);
 });
+
+test('local development server routes API handlers', async () => {
+  const server = await readFile('server.js', 'utf8');
+
+  assert.match(server, /\/api\/transcribe/);
+  assert.match(server, /\/api\/summarize/);
+});
+
+test('main page exposes temporary audio upload controls', async () => {
+  const html = await readFile('index.html', 'utf8');
+
+  assert.match(html, /uploadAudioButton/);
+  assert.match(html, /audioFileInput/);
+  assert.match(html, /accept="audio\/\*/);
+});

@@ -287,7 +287,11 @@ label {
 }
 
 .ready-controls {
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+
+.file-input {
+  display: none;
 }
 
 .result-actions {

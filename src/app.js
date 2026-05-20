@@ -44,6 +44,8 @@ const elements = {
   waveform: document.querySelector('#waveform'),
   newMeetingButton: document.querySelector('#newMeetingButton'),
   startButton: document.querySelector('#startButton'),
+  uploadAudioButton: document.querySelector('#uploadAudioButton'),
+  audioFileInput: document.querySelector('#audioFileInput'),
   pauseButton: document.querySelector('#pauseButton'),
   endButton: document.querySelector('#endButton'),
   summaryOverview: document.querySelector('#summaryOverview'),
@@ -84,6 +86,8 @@ function init() {
 function bindEvents() {
   elements.newMeetingButton.addEventListener('click', resetMeeting);
   elements.startButton.addEventListener('click', startMeeting);
+  elements.uploadAudioButton.addEventListener('click', () => elements.audioFileInput.click());
+  elements.audioFileInput.addEventListener('change', handleAudioFileUpload);
   elements.pauseButton.addEventListener('click', togglePause);
   elements.endButton.addEventListener('click', endMeeting);
   elements.copySummaryButton.addEventListener('click', copySummary);
@@ -164,13 +168,47 @@ async function endMeeting() {
       setTranscriptFromText(transcript);
     } catch (error) {
       setStatus(`전사 실패: ${shortenError(error?.message)}`);
+      if (!hasCurrentMeetingContent()) {
+        render();
+        return;
+      }
     }
   }
 
-  if (!hasSummarizableMeetingContent({
-    transcriptEntries: state.transcriptEntries,
-    note: elements.note.value,
-  })) {
+  await summarizeAndSaveCurrentMeeting();
+}
+
+async function handleAudioFileUpload(event) {
+  const [file] = event.target.files || [];
+  if (!file) return;
+
+  state.transcriptEntries = [];
+  state.currentRecord = null;
+  state.selectedRecordId = null;
+  clearSummary();
+  setStatus('업로드 전사 중');
+  setStage('현재 단계: 음성 파일 전사 중');
+  render();
+
+  try {
+    const transcript = await transcribeAudio(file);
+    setTranscriptFromText(transcript);
+  } catch (error) {
+    setStatus(`전사 실패: ${shortenError(error?.message)}`);
+    if (!hasCurrentMeetingContent()) {
+      elements.audioFileInput.value = '';
+      render();
+      return;
+    }
+  } finally {
+    elements.audioFileInput.value = '';
+  }
+
+  await summarizeAndSaveCurrentMeeting();
+}
+
+async function summarizeAndSaveCurrentMeeting() {
+  if (!hasCurrentMeetingContent()) {
     setStatus('요약할 내용 없음');
     setStage('현재 단계: 회의 정보 입력');
     render();
@@ -193,6 +231,13 @@ async function endMeeting() {
   void renderHistory();
   setStatus(source === 'llm' ? 'LLM 요약 완료' : `로컬 요약 사용${error ? `: ${error}` : ''}`);
   render();
+}
+
+function hasCurrentMeetingContent() {
+  return hasSummarizableMeetingContent({
+    transcriptEntries: state.transcriptEntries,
+    note: elements.note.value,
+  });
 }
 
 function resetMeeting() {
@@ -430,6 +475,7 @@ function render() {
   elements.readyControls.hidden = state.isMeetingActive;
   elements.recordingPanel.hidden = !state.isMeetingActive;
   elements.startButton.disabled = state.isMeetingActive || !canRecord;
+  elements.uploadAudioButton.disabled = state.isMeetingActive;
   elements.pauseButton.disabled = !state.isMeetingActive;
   elements.endButton.disabled = !state.isMeetingActive;
   elements.pauseButton.querySelector('.pause-text').textContent = state.isPaused ? '다시 시작' : '일시정지';
