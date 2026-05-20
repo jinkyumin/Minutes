@@ -46,9 +46,6 @@ const elements = {
   startButton: document.querySelector('#startButton'),
   pauseButton: document.querySelector('#pauseButton'),
   endButton: document.querySelector('#endButton'),
-  liveText: document.querySelector('#liveText'),
-  transcriptCount: document.querySelector('#transcriptCount'),
-  transcriptList: document.querySelector('#transcriptList'),
   summaryOverview: document.querySelector('#summaryOverview'),
   keyPoints: document.querySelector('#keyPoints'),
   actionItems: document.querySelector('#actionItems'),
@@ -118,7 +115,6 @@ async function startMeeting() {
   state.startedAt = new Date();
   state.audioChunks = [];
   clearSummary();
-  elements.liveText.textContent = '회의 종료 후 녹음 파일 전사 결과가 여기에 표시됩니다.';
   state.mediaRecorder = createMediaRecorder(state.mediaStream);
   state.mediaRecorder.start();
   startWaveform(state.mediaStream);
@@ -157,7 +153,6 @@ async function endMeeting() {
   setStatus('전사 생성 중');
   setStage('현재 단계: 녹음 전사 중');
   elements.recordingMessage.textContent = '녹음 파일을 전사하고 있습니다.';
-  elements.liveText.textContent = '녹음 파일을 전사하고 있습니다.';
   render();
 
   const recordedAudio = await stopRecording();
@@ -167,9 +162,7 @@ async function endMeeting() {
     try {
       const transcript = await transcribeAudio(recordedAudio);
       setTranscriptFromText(transcript);
-      elements.liveText.textContent = transcript || '전사 결과가 비어 있습니다.';
     } catch (error) {
-      elements.liveText.textContent = `전사 실패: ${shortenError(error?.message)}`;
       setStatus(`전사 실패: ${shortenError(error?.message)}`);
     }
   }
@@ -178,14 +171,12 @@ async function endMeeting() {
     transcriptEntries: state.transcriptEntries,
     note: elements.note.value,
   })) {
-    elements.liveText.textContent = '전사 내용이나 Note가 없어 요약을 생성하지 않았습니다.';
     setStatus('요약할 내용 없음');
     setStage('현재 단계: 회의 정보 입력');
     render();
     return;
   }
 
-  elements.liveText.textContent = '회의가 종료되었습니다. 요약을 생성합니다.';
   setStatus('요약 생성 중');
   setStage('현재 단계: 결과 확인');
   render();
@@ -226,7 +217,6 @@ function resetMeeting() {
   elements.meetingDuration.textContent = '00:00';
   elements.recordingTimerText.textContent = '00:00';
   elements.recordingMessage.textContent = '녹음 파일을 저장 중입니다. 회의 종료 후 전체 음성을 전사하고 요약합니다.';
-  elements.liveText.textContent = '회의 종료 후 녹음 파일 전사 결과가 여기에 표시됩니다.';
   clearSummary();
   setStatus('대기 중');
   setStage('현재 단계: 회의 정보 입력');
@@ -443,34 +433,7 @@ function render() {
   elements.pauseButton.disabled = !state.isMeetingActive;
   elements.endButton.disabled = !state.isMeetingActive;
   elements.pauseButton.querySelector('.pause-text').textContent = state.isPaused ? '다시 시작' : '일시정지';
-  elements.transcriptCount.textContent = `${state.transcriptEntries.length}개 문장`;
   elements.sendNotionButton.disabled = !state.currentRecord && !state.selectedRecordId;
-  renderTranscript();
-}
-
-function renderTranscript() {
-  elements.transcriptList.replaceChildren();
-
-  if (state.transcriptEntries.length === 0) {
-    const empty = document.createElement('li');
-    empty.className = 'empty-state';
-    empty.textContent = '아직 전사 결과가 없습니다.';
-    elements.transcriptList.append(empty);
-    return;
-  }
-
-  state.transcriptEntries.forEach((entry) => {
-    const item = document.createElement('li');
-    const time = document.createElement('time');
-    const text = document.createElement('p');
-
-    time.textContent = formatTime(toDate(entry.time));
-    text.textContent = entry.text;
-    item.append(time, text);
-    elements.transcriptList.append(item);
-  });
-
-  elements.transcriptList.scrollTop = elements.transcriptList.scrollHeight;
 }
 
 function renderSummary(summary) {
@@ -513,8 +476,6 @@ async function renderHistory() {
   records.forEach((record) => {
     const item = document.createElement('li');
     const selectButton = document.createElement('button');
-    const menuButton = document.createElement('button');
-    const menu = document.createElement('div');
     const deleteButton = document.createElement('button');
     const date = document.createElement('strong');
     const title = document.createElement('span');
@@ -524,36 +485,22 @@ async function renderHistory() {
     selectButton.dataset.recordId = record.id;
     selectButton.className = 'history-record-button';
     selectButton.classList.toggle('selected', record.id === state.selectedRecordId);
-    menuButton.type = 'button';
-    menuButton.dataset.menuRecordId = record.id;
-    menuButton.className = 'history-menu-button';
-    menuButton.textContent = '...';
-    menuButton.title = '더보기';
-    menu.hidden = true;
-    menu.className = 'history-menu';
     deleteButton.type = 'button';
     deleteButton.dataset.deleteRecordId = record.id;
-    deleteButton.className = 'delete-record-button';
-    deleteButton.textContent = '삭제';
+    deleteButton.className = 'history-delete-button';
+    deleteButton.textContent = '×';
+    deleteButton.title = '회의록 삭제';
 
     date.textContent = formatMeetingDate(record.meetingDateTime);
     title.textContent = createRecordTitle(record);
 
     selectButton.append(date, title);
-    menu.append(deleteButton);
-    item.append(selectButton, menuButton, menu);
+    item.append(selectButton, deleteButton);
     elements.historyList.append(item);
   });
 }
 
 function handleHistoryClick(event) {
-  const menuButton = event.target.closest('button[data-menu-record-id]');
-  if (menuButton) {
-    event.stopPropagation();
-    toggleHistoryMenu(menuButton);
-    return;
-  }
-
   const deleteButton = event.target.closest('button[data-delete-record-id]');
   if (deleteButton) {
     event.stopPropagation();
@@ -567,20 +514,8 @@ function handleHistoryClick(event) {
   }
 }
 
-function toggleHistoryMenu(button) {
-  const item = button.closest('.history-item');
-  const menu = item.querySelector('.history-menu');
-
-  closeHistoryMenus();
-  menu.hidden = false;
-}
-
 function closeHistoryMenus(event) {
   if (event?.target.closest('.history-item')) return;
-
-  document.querySelectorAll('.history-menu').forEach((menu) => {
-    menu.hidden = true;
-  });
 }
 
 async function deleteHistoryRecord(recordId) {
@@ -616,7 +551,6 @@ async function selectHistoryRecord(recordId) {
   elements.meetingDateTime.value = record.meetingDateTime;
   elements.attendees.value = record.attendees;
   elements.note.value = record.note;
-  elements.liveText.textContent = '선택한 회의록을 입력창에 불러왔습니다.';
   renderSummary(record.summary);
   setStatus('회의록 불러옴');
   setStage('현재 단계: 결과 확인');

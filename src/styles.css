@@ -443,53 +443,6 @@ label {
   line-height: 1.5;
 }
 
-.transcript-panel {
-  margin-bottom: 14px;
-}
-
-.live-text,
-.transcript-list {
-  border: 1px solid #d7e0e6;
-  background: #f8fafb;
-}
-
-.live-text {
-  min-height: 58px;
-  border-radius: 8px 8px 0 0;
-  padding: 14px;
-  color: #3e4b55;
-  line-height: 1.5;
-}
-
-.transcript-list {
-  max-height: 220px;
-  min-height: 150px;
-  overflow-y: auto;
-  margin: 0;
-  border-top: 0;
-  border-radius: 0 0 8px 8px;
-  padding: 0;
-  list-style: none;
-}
-
-.transcript-list li {
-  border-top: 1px solid #e5eaee;
-  padding: 12px 14px;
-}
-
-.transcript-list time {
-  display: block;
-  margin-bottom: 4px;
-  color: #64717d;
-  font-size: 0.78rem;
-  font-weight: 900;
-}
-
-.transcript-list p {
-  margin-bottom: 0;
-  line-height: 1.5;
-}
-
 .note-field span,
 .dialog-help {
   color: #b0bbc4;
@@ -544,8 +497,7 @@ label {
 .history-item {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -558,7 +510,7 @@ label {
 .history-record-button {
   width: 100%;
   min-width: 0;
-  padding: 13px;
+  padding: 13px 42px 13px 13px;
   text-align: left;
   overflow: hidden;
 }
@@ -587,33 +539,26 @@ label {
   white-space: nowrap;
 }
 
-.history-menu-button {
+.history-delete-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  height: 28px;
   padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #8a98a3;
+  font-size: 1.1rem;
+  line-height: 1;
   text-align: center;
 }
 
-.history-menu {
-  position: absolute;
-  top: 42px;
-  right: 0;
-  z-index: 5;
-  display: grid;
-  min-width: 112px;
-  border: 1px solid #dce3e8;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(32, 33, 36, 0.12);
-  padding: 6px;
-}
-
-.history-menu[hidden] {
-  display: none;
-}
-
-.delete-record-button {
-  border-color: transparent;
+.history-delete-button:hover {
+  background: #f2f5f7;
   color: #a83232;
-  text-align: left;
 }
 
 .empty-state {
