@@ -8,15 +8,16 @@ export async function createSignedAudioUpload({ fileName = 'meeting.webm', mimeT
   const response = await fetch(`${storageBaseUrl()}/object/upload/sign/${audioBucket()}/${encodeStoragePath(path)}`, {
     method: 'POST',
     headers: storageHeaders(),
-    body: JSON.stringify({}),
+    body: JSON.stringify({ expiresIn: 600 }),
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(createStorageErrorMessage('signed upload URL 생성', response.status, await response.text()));
   }
 
   const data = await response.json();
-  const signedUrl = new URL(`${storageBaseUrl()}${data.url}`);
+  const rawSignedUrl = data.url || data.signedURL || data.signedUrl;
+  const signedUrl = resolveStorageUrl(rawSignedUrl);
   const token = signedUrl.searchParams.get('token');
 
   if (!token) {
@@ -40,7 +41,7 @@ export async function downloadAudioObject(path) {
   });
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(createStorageErrorMessage('녹음파일 다운로드', response.status, await response.text()));
   }
 
   return new Uint8Array(await response.arrayBuffer());
@@ -70,14 +71,13 @@ async function ensureAudioBucket() {
 
   if (getResponse.ok) return;
   if (getResponse.status !== 404) {
-    throw new Error(await getResponse.text());
+    throw new Error(createStorageErrorMessage('버킷 확인', getResponse.status, await getResponse.text()));
   }
 
   const createResponse = await fetch(`${storageBaseUrl()}/bucket`, {
     method: 'POST',
     headers: storageHeaders(),
     body: JSON.stringify({
-      id: audioBucket(),
       name: audioBucket(),
       public: false,
       file_size_limit: 52_428_800,
@@ -97,8 +97,38 @@ async function ensureAudioBucket() {
   });
 
   if (!createResponse.ok && createResponse.status !== 409) {
-    throw new Error(await createResponse.text());
+    throw new Error(createStorageErrorMessage('버킷 생성', createResponse.status, await createResponse.text()));
   }
+}
+
+function createStorageErrorMessage(action, status, body) {
+  const details = parseStorageError(body);
+
+  if (status === 404) {
+    return `Supabase Storage ${action} 실패: 버킷 '${audioBucket()}'을 찾을 수 없습니다. Supabase Storage에서 '${audioBucket()}' 버킷을 수동 생성하거나 SUPABASE_AUDIO_BUCKET 값을 확인하세요. ${details}`;
+  }
+
+  return `Supabase Storage ${action} 실패 (${status}): ${details}`;
+}
+
+function parseStorageError(body) {
+  if (!body) return '';
+
+  try {
+    const parsed = JSON.parse(body);
+    return parsed.message || parsed.error || body;
+  } catch {
+    return body;
+  }
+}
+
+function resolveStorageUrl(pathOrUrl) {
+  const text = String(pathOrUrl || '');
+  if (/^https?:\/\//i.test(text)) {
+    return new URL(text);
+  }
+
+  return new URL(`${storageBaseUrl()}${text.startsWith('/') ? text : `/${text}`}`);
 }
 
 function createAudioPath(fileName, mimeType) {
