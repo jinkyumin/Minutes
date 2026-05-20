@@ -3,6 +3,7 @@ import { createMeetingStore } from './meetingStore.js';
 import { createRemoteMeetingStore } from './remoteMeetingStore.js';
 import { buildSummaryPayload, formatMeetingMarkdown } from './meetingPayload.js';
 import { appendTranscriptEntry, cleanTranscriptEntries, normalizeSpeechText } from './transcriptProcessing.js';
+import { hasSummarizableMeetingContent } from './meetingContent.js';
 
 const NOTION_DATABASE_KEY = 'meeting-minutes-notion-database-id';
 const SpeechRecognition =
@@ -51,7 +52,6 @@ const elements = {
   testNotionButton: document.querySelector('#testNotionButton'),
   toggleHistoryButton: document.querySelector('#toggleHistoryButton'),
   openHistoryButton: document.querySelector('#openHistoryButton'),
-  historyCount: document.querySelector('#historyCount'),
   historyList: document.querySelector('#historyList'),
 };
 
@@ -150,6 +150,18 @@ async function endMeeting() {
   state.recognition?.stop();
   flushInterimTranscript();
   stopDurationTimer();
+
+  if (!hasSummarizableMeetingContent({
+    transcriptEntries: state.transcriptEntries,
+    note: elements.note.value,
+  })) {
+    elements.liveText.textContent = '전사 내용이나 Note가 없어 요약을 생성하지 않았습니다.';
+    setStatus('요약할 내용 없음');
+    setStage('현재 단계: 회의 정보 입력');
+    render();
+    return;
+  }
+
   elements.liveText.textContent = '회의가 종료되었습니다. 요약을 생성합니다.';
   setStatus('요약 생성 중');
   setStage('현재 단계: 결과 확인');
@@ -345,7 +357,6 @@ function renderList(list, items, emptyText) {
 async function renderHistory() {
   const records = await meetingStore.listRecords();
   elements.historyList.replaceChildren();
-  elements.historyCount.textContent = `${records.length}건`;
 
   if (records.length === 0) {
     const empty = document.createElement('li');

@@ -46,6 +46,12 @@ textarea {
   color: #202124;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: #a8b3bc;
+  opacity: 1;
+}
+
 textarea {
   min-height: 88px;
   resize: vertical;
@@ -351,7 +357,7 @@ label {
 
 .note-field span,
 .dialog-help {
-  color: #687682;
+  color: #9aa8b2;
   font-size: 0.88rem;
   font-weight: 500;
   line-height: 1.45;
@@ -524,7 +530,13 @@ label {
     max-height: none;
   }
 
-  .history-open-button {
-    min-height: 120px;
+  .app-grid.history-collapsed .history-panel {
+    min-height: 52px;
+    max-height: 52px;
+  }
+
+  .app-grid.history-collapsed .history-open-button {
+    min-height: 52px;
+    writing-mode: initial;
   }
 }

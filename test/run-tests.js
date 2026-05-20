@@ -1,5 +1,6 @@
 import './summary.test.js';
 import './transcriptProcessing.test.js';
+import './meetingContent.test.js';
 import './meetingStore.test.js';
 import './remoteMeetingStore.test.js';
 import './buildConfig.test.js';
