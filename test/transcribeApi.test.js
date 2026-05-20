@@ -48,6 +48,42 @@ test('transcribe API calls Gemini with inline audio and returns text', async () 
   globalThis.fetch = originalFetch;
 });
 
+test('transcribe API strips data URL metadata and MIME parameters', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+
+  let capturedRequest;
+  globalThis.fetch = async (url, options) => {
+    capturedRequest = { url, options };
+    return jsonResponse({
+      candidates: [{ content: { parts: [{ text: '전사 결과입니다.' }] } }],
+    });
+  };
+
+  const response = createResponse();
+  await transcribeHandler(
+    createRequest('POST', {
+      audio: 'data:audio/webm;codecs=opus;base64,YXVkaW8=',
+      mimeType: 'audio/webm;codecs=opus',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+
+  const body = JSON.parse(capturedRequest.options.body);
+  assert.equal(body.contents[0].parts[0].inlineData.mimeType, 'audio/webm');
+  assert.equal(body.contents[0].parts[0].inlineData.data, 'YXVkaW8=');
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  globalThis.fetch = originalFetch;
+});
+
 test('transcribe API rejects missing audio', async () => {
   const response = createResponse();
   await transcribeHandler(createRequest('POST', {}), response);

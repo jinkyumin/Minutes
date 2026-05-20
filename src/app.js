@@ -125,6 +125,7 @@ async function startMeeting() {
   startDurationTimer();
   setStatus('녹음 중');
   setStage('현재 단계: 회의 녹음 중');
+  elements.recordingMessage.textContent = '녹음 파일을 저장 중입니다.';
   render();
   void renderHistory();
 }
@@ -261,7 +262,7 @@ function resetMeeting() {
   elements.note.value = '';
   elements.meetingDuration.textContent = '00:00';
   elements.recordingTimerText.textContent = '00:00';
-  elements.recordingMessage.textContent = '녹음 파일을 저장 중입니다. 회의 종료 후 전체 음성을 전사하고 요약합니다.';
+  elements.recordingMessage.textContent = '녹음 파일을 저장 중입니다.';
   clearSummary();
   setStatus('대기 중');
   setStage('현재 단계: 회의 정보 입력');
@@ -698,7 +699,7 @@ function shortenError(message) {
 
   try {
     const parsed = JSON.parse(message);
-    return String(parsed.error || message).slice(0, 90);
+    return String(parsed.error?.message || parsed.error || message).slice(0, 90);
   } catch {
     return String(message).slice(0, 90);
   }

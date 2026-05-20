@@ -6,8 +6,9 @@ export default async function handler(request, response) {
   }
 
   const body = readBody(request);
-  const audioData = extractBase64Audio(body.audio);
-  const mimeType = body.mimeType || extractMimeType(body.audio) || 'audio/webm';
+  const audioInput = parseAudioInput(body.audio);
+  const audioData = audioInput.data;
+  const mimeType = normalizeAudioMimeType(body.mimeType || audioInput.mimeType || 'audio/webm');
 
   if (!audioData) {
     return response.status(400).json({ error: 'Audio is required.' });
@@ -113,14 +114,29 @@ function resolveProvider() {
   return (process.env.TRANSCRIPTION_PROVIDER || process.env.LLM_PROVIDER || 'gemini').toLowerCase();
 }
 
-function extractBase64Audio(audio = '') {
+function parseAudioInput(audio = '') {
   const text = String(audio || '');
-  const dataUrlMatch = text.match(/^data:audio\/[^;]+;base64,(.+)$/);
-  return (dataUrlMatch?.[1] || text).trim();
+  const dataUrlMatch = text.match(/^data:([^,]+),(.*)$/s);
+
+  if (!dataUrlMatch) {
+    return { data: text.trim(), mimeType: '' };
+  }
+
+  const metadata = dataUrlMatch[1] || '';
+  const mimeType = metadata.split(';')[0] || '';
+  return {
+    data: dataUrlMatch[2].trim(),
+    mimeType,
+  };
 }
 
-function extractMimeType(audio = '') {
-  return String(audio || '').match(/^data:([^;]+);base64,/)?.[1] || '';
+function normalizeAudioMimeType(mimeType = '') {
+  const normalized = String(mimeType || '').split(';')[0].trim().toLowerCase();
+
+  if (normalized === 'audio/x-m4a') return 'audio/m4a';
+  if (normalized === 'audio/mp3') return 'audio/mp3';
+  if (normalized.startsWith('audio/')) return normalized;
+  return 'audio/webm';
 }
 
 function parseGeminiText(data) {
