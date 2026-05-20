@@ -6,3 +6,4 @@ import './remoteMeetingStore.test.js';
 import './buildConfig.test.js';
 import './meetingPayload.test.js';
 import './apiHandlers.test.js';
+import './transcribeApi.test.js';

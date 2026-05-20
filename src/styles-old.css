@@ -279,11 +279,16 @@ label {
   font-weight: 500;
 }
 
+.controls,
 .ready-controls,
 .result-actions {
   display: grid;
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.controls {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .ready-controls {
@@ -299,6 +304,11 @@ label {
   border-color: #1f6f8b;
   background: #1f6f8b;
   color: #ffffff;
+}
+
+.danger {
+  border-color: #d9aaaa;
+  color: #9c2f2f;
 }
 
 .notion {

@@ -6,10 +6,11 @@ import { appendTranscriptEntry, cleanTranscriptEntries, normalizeSpeechText } fr
 import { hasSummarizableMeetingContent } from './meetingContent.js';
 
 const NOTION_DATABASE_KEY = 'meeting-minutes-notion-database-id';
-const WAVE_BAR_COUNT = 32;
-const canRecord = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition || null;
 
 const state = {
+  recognition: null,
   transcriptEntries: [],
   isMeetingActive: false,
   isPaused: false,
@@ -17,12 +18,7 @@ const state = {
   selectedRecordId: null,
   currentRecord: null,
   isHistoryCollapsed: false,
-  mediaStream: null,
-  mediaRecorder: null,
-  audioChunks: [],
-  audioContext: null,
-  analyser: null,
-  waveAnimationId: null,
+  interimTranscript: '',
 };
 
 const meetingStore = createRemoteMeetingStore(createMeetingStore(window.localStorage));
@@ -37,11 +33,6 @@ const elements = {
   meetingDateTime: document.querySelector('#meetingDateTime'),
   attendees: document.querySelector('#attendees'),
   note: document.querySelector('#note'),
-  readyControls: document.querySelector('#readyControls'),
-  recordingPanel: document.querySelector('#recordingPanel'),
-  recordingTimerText: document.querySelector('#recordingTimerText'),
-  recordingMessage: document.querySelector('#recordingMessage'),
-  waveform: document.querySelector('#waveform'),
   newMeetingButton: document.querySelector('#newMeetingButton'),
   startButton: document.querySelector('#startButton'),
   pauseButton: document.querySelector('#pauseButton'),
@@ -71,13 +62,14 @@ init();
 function init() {
   elements.meetingDateTime.value = toDateTimeInputValue(new Date());
   elements.notionDatabaseId.value = window.localStorage.getItem(NOTION_DATABASE_KEY) || '';
-  createWaveBars();
   bindEvents();
 
-  if (!canRecord) {
+  if (!SpeechRecognition) {
     elements.supportNotice.hidden = false;
     elements.startButton.disabled = true;
-    setStatus('녹음 미지원');
+    setStatus('음성 인식 미지원');
+  } else {
+    state.recognition = createRecognition();
   }
 
   render();
@@ -100,31 +92,36 @@ function bindEvents() {
   document.addEventListener('click', closeHistoryMenus);
 }
 
-async function startMeeting() {
-  if (!canRecord) return;
+function createRecognition() {
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ko-KR';
+  recognition.continuous = true;
+  recognition.interimResults = true;
 
-  try {
-    state.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    setStatus('마이크 권한 필요');
-    return;
-  }
+  recognition.addEventListener('result', handleRecognitionResult);
+  recognition.addEventListener('error', handleRecognitionError);
+  recognition.addEventListener('end', () => {
+    if (state.isMeetingActive && !state.isPaused) {
+      recognition.start();
+    }
+  });
 
+  return recognition;
+}
+
+function startMeeting() {
   state.transcriptEntries = [];
+  state.interimTranscript = '';
   state.currentRecord = null;
   state.selectedRecordId = null;
   state.isMeetingActive = true;
   state.isPaused = false;
   state.startedAt = new Date();
-  state.audioChunks = [];
   clearSummary();
-  elements.liveText.textContent = '회의 종료 후 녹음 파일 전사 결과가 여기에 표시됩니다.';
-  state.mediaRecorder = createMediaRecorder(state.mediaStream);
-  state.mediaRecorder.start();
-  startWaveform(state.mediaStream);
+  state.recognition?.start();
   startDurationTimer();
-  setStatus('녹음 중');
-  setStage('현재 단계: 회의 녹음 중');
+  setStatus('회의 진행 중');
+  setStage('현재 단계: 회의 진행 중');
   render();
   void renderHistory();
 }
@@ -135,13 +132,11 @@ function togglePause() {
   state.isPaused = !state.isPaused;
 
   if (state.isPaused) {
-    state.mediaRecorder?.pause();
-    state.audioContext?.suspend();
+    state.recognition?.stop();
     setStatus('일시정지');
   } else {
-    state.mediaRecorder?.resume();
-    state.audioContext?.resume();
-    setStatus('녹음 중');
+    state.recognition?.start();
+    setStatus('회의 진행 중');
   }
 
   render();
@@ -152,27 +147,9 @@ async function endMeeting() {
 
   state.isMeetingActive = false;
   state.isPaused = false;
+  state.recognition?.stop();
+  flushInterimTranscript();
   stopDurationTimer();
-  stopWaveform();
-  setStatus('전사 생성 중');
-  setStage('현재 단계: 녹음 전사 중');
-  elements.recordingMessage.textContent = '녹음 파일을 전사하고 있습니다.';
-  elements.liveText.textContent = '녹음 파일을 전사하고 있습니다.';
-  render();
-
-  const recordedAudio = await stopRecording();
-  stopMediaStream();
-
-  if (recordedAudio?.size) {
-    try {
-      const transcript = await transcribeAudio(recordedAudio);
-      setTranscriptFromText(transcript);
-      elements.liveText.textContent = transcript || '전사 결과가 비어 있습니다.';
-    } catch (error) {
-      elements.liveText.textContent = `전사 실패: ${shortenError(error?.message)}`;
-      setStatus(`전사 실패: ${shortenError(error?.message)}`);
-    }
-  }
 
   if (!hasSummarizableMeetingContent({
     transcriptEntries: state.transcriptEntries,
@@ -206,27 +183,23 @@ async function endMeeting() {
 
 function resetMeeting() {
   if (state.isMeetingActive) {
-    state.mediaRecorder?.stop();
+    state.recognition?.stop();
   }
 
   state.transcriptEntries = [];
+  state.interimTranscript = '';
   state.isMeetingActive = false;
   state.isPaused = false;
   state.startedAt = null;
   state.currentRecord = null;
   state.selectedRecordId = null;
-  state.audioChunks = [];
-  stopWaveform();
-  stopMediaStream();
   stopDurationTimer();
   elements.meetingTitle.value = '';
   elements.meetingDateTime.value = toDateTimeInputValue(new Date());
   elements.attendees.value = '';
   elements.note.value = '';
   elements.meetingDuration.textContent = '00:00';
-  elements.recordingTimerText.textContent = '00:00';
-  elements.recordingMessage.textContent = '녹음 파일을 저장 중입니다. 회의 종료 후 전체 음성을 전사하고 요약합니다.';
-  elements.liveText.textContent = '회의 종료 후 녹음 파일 전사 결과가 여기에 표시됩니다.';
+  elements.liveText.textContent = '회의를 시작하면 말한 내용이 여기에 표시됩니다.';
   clearSummary();
   setStatus('대기 중');
   setStage('현재 단계: 회의 정보 입력');
@@ -234,157 +207,43 @@ function resetMeeting() {
   void renderHistory();
 }
 
-function createMediaRecorder(stream) {
-  const mimeType = pickRecordingMimeType();
-  const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+function handleRecognitionResult(event) {
+  let interimText = '';
 
-  recorder.addEventListener('dataavailable', (event) => {
-    if (event.data?.size) {
-      state.audioChunks.push(event.data);
+  for (let index = event.resultIndex; index < event.results.length; index += 1) {
+    const result = event.results[index];
+    const text = result[0].transcript.trim();
+
+    if (!text) continue;
+
+    if (result.isFinal) {
+      appendTranscriptEntry(state.transcriptEntries, text);
+      state.interimTranscript = '';
+    } else {
+      interimText += text;
     }
-  });
-
-  return recorder;
-}
-
-function pickRecordingMimeType() {
-  const candidates = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/mp4',
-  ];
-
-  return candidates.find((mimeType) => MediaRecorder.isTypeSupported?.(mimeType)) || '';
-}
-
-function stopRecording() {
-  return new Promise((resolve) => {
-    const recorder = state.mediaRecorder;
-
-    if (!recorder) {
-      resolve(null);
-      return;
-    }
-
-    recorder.addEventListener('stop', () => {
-      const type = recorder.mimeType || state.audioChunks[0]?.type || 'audio/webm';
-      const audioBlob = new Blob(state.audioChunks, { type });
-      state.mediaRecorder = null;
-      resolve(audioBlob);
-    }, { once: true });
-
-    if (recorder.state === 'inactive') {
-      const type = recorder.mimeType || state.audioChunks[0]?.type || 'audio/webm';
-      state.mediaRecorder = null;
-      resolve(new Blob(state.audioChunks, { type }));
-      return;
-    }
-
-    recorder.stop();
-  });
-}
-
-function stopMediaStream() {
-  state.mediaStream?.getTracks().forEach((track) => track.stop());
-  state.mediaStream = null;
-}
-
-async function transcribeAudio(audioBlob) {
-  const audio = await blobToDataUrl(audioBlob);
-  const response = await fetch('/api/transcribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      audio,
-      mimeType: audioBlob.type || 'audio/webm',
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
   }
 
-  const data = await response.json();
-  return data.transcript || '';
+  state.interimTranscript = normalizeSpeechText(interimText);
+  elements.liveText.textContent =
+    state.interimTranscript || '말을 멈추면 확정된 문장이 전사 목록에 추가됩니다.';
+  render();
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => resolve(reader.result));
-    reader.addEventListener('error', () => reject(reader.error));
-    reader.readAsDataURL(blob);
-  });
+function handleRecognitionError(event) {
+  const message =
+    event.error === 'not-allowed'
+      ? '마이크 권한이 필요합니다'
+      : `음성 인식 오류: ${event.error}`;
+
+  setStatus(message);
 }
 
-function setTranscriptFromText(transcript) {
-  state.transcriptEntries = [];
+function flushInterimTranscript() {
+  if (!state.interimTranscript) return;
 
-  String(transcript || '')
-    .split(/\n+/)
-    .map((line) => normalizeSpeechText(line))
-    .filter(Boolean)
-    .forEach((line) => appendTranscriptEntry(state.transcriptEntries, line));
-
-  if (state.transcriptEntries.length === 0 && String(transcript || '').trim().length >= 4) {
-    appendTranscriptEntry(state.transcriptEntries, transcript);
-  }
-}
-
-function createWaveBars() {
-  elements.waveform.replaceChildren();
-
-  for (let index = 0; index < WAVE_BAR_COUNT; index += 1) {
-    const bar = document.createElement('span');
-    bar.className = 'wave-bar';
-    elements.waveform.append(bar);
-  }
-}
-
-function startWaveform(stream) {
-  stopWaveform();
-
-  state.audioContext = new AudioContext();
-  state.analyser = state.audioContext.createAnalyser();
-  state.analyser.fftSize = 128;
-  state.audioContext.createMediaStreamSource(stream).connect(state.analyser);
-
-  const frequencyData = new Uint8Array(state.analyser.frequencyBinCount);
-  const bars = [...elements.waveform.querySelectorAll('.wave-bar')];
-
-  const draw = () => {
-    state.analyser.getByteFrequencyData(frequencyData);
-
-    bars.forEach((bar, index) => {
-      const bucket = Math.floor((index / bars.length) * frequencyData.length);
-      const volume = frequencyData[bucket] / 255;
-      const height = 6 + Math.round(volume * 34);
-      bar.style.height = state.isPaused ? '6px' : `${height}px`;
-      bar.style.opacity = String(state.isPaused ? 0.35 : 0.45 + volume * 0.55);
-    });
-
-    state.waveAnimationId = requestAnimationFrame(draw);
-  };
-
-  draw();
-}
-
-function stopWaveform() {
-  if (state.waveAnimationId) {
-    cancelAnimationFrame(state.waveAnimationId);
-    state.waveAnimationId = null;
-  }
-
-  if (state.audioContext && state.audioContext.state !== 'closed') {
-    void state.audioContext.close().catch(() => {});
-  }
-  state.audioContext = null;
-  state.analyser = null;
-
-  elements.waveform?.querySelectorAll('.wave-bar').forEach((bar) => {
-    bar.style.height = '8px';
-    bar.style.opacity = '0.74';
-  });
+  appendTranscriptEntry(state.transcriptEntries, state.interimTranscript);
+  state.interimTranscript = '';
 }
 
 async function summarizeWithLlm(record) {
@@ -437,12 +296,10 @@ function render() {
   elements.toggleHistoryButton.title = '회의록 목록 숨기기';
   elements.openHistoryButton.textContent = '열기';
   elements.openHistoryButton.title = '회의록 목록 열기';
-  elements.readyControls.hidden = state.isMeetingActive;
-  elements.recordingPanel.hidden = !state.isMeetingActive;
-  elements.startButton.disabled = state.isMeetingActive || !canRecord;
+  elements.startButton.disabled = state.isMeetingActive || !SpeechRecognition;
   elements.pauseButton.disabled = !state.isMeetingActive;
   elements.endButton.disabled = !state.isMeetingActive;
-  elements.pauseButton.querySelector('.pause-text').textContent = state.isPaused ? '다시 시작' : '일시정지';
+  elements.pauseButton.textContent = state.isPaused ? '다시 시작' : '일시정지';
   elements.transcriptCount.textContent = `${state.transcriptEntries.length}개 문장`;
   elements.sendNotionButton.disabled = !state.currentRecord && !state.selectedRecordId;
   renderTranscript();
@@ -454,7 +311,7 @@ function renderTranscript() {
   if (state.transcriptEntries.length === 0) {
     const empty = document.createElement('li');
     empty.className = 'empty-state';
-    empty.textContent = '아직 전사 결과가 없습니다.';
+    empty.textContent = '아직 확정된 전사 문장이 없습니다.';
     elements.transcriptList.append(empty);
     return;
   }
@@ -752,7 +609,6 @@ function updateDuration() {
   const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
   const remainder = (seconds % 60).toString().padStart(2, '0');
   elements.meetingDuration.textContent = `${minutes}:${remainder}`;
-  elements.recordingTimerText.textContent = `${minutes}:${remainder}`;
 }
 
 function formatTime(date) {

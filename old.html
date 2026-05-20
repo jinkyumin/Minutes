@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Meeting Notes</title>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/styles-old.css" />
   </head>
   <body>
     <main class="app-shell">
@@ -20,7 +20,7 @@
       </header>
 
       <section id="supportNotice" class="notice" hidden>
-        이 브라우저는 회의 녹음을 지원하지 않습니다. Chrome 또는 Edge에서 실행해주세요.
+        이 브라우저는 실시간 음성 인식을 지원하지 않습니다. Chrome 또는 Edge에서 실행해주세요.
       </section>
 
       <section id="appGrid" class="app-grid">
@@ -59,38 +59,20 @@
               </label>
             </section>
 
-            <div id="readyControls" class="ready-controls" aria-label="회의 제어">
+            <div class="controls" aria-label="회의 제어">
               <button id="startButton" class="primary" type="button">회의 시작</button>
+              <button id="pauseButton" type="button" disabled>일시정지</button>
+              <button id="endButton" class="danger" type="button" disabled>회의 종료</button>
             </div>
 
-            <section id="recordingPanel" class="recording-card" aria-label="회의 녹음 상태" hidden>
-              <div class="recording-timer">
-                <span class="record-dot"></span>
-                <span id="recordingTimerText">00:00</span>
-              </div>
-
-              <div class="recording-dock">
-                <button id="pauseButton" class="pause-button" type="button" disabled aria-label="일시정지">
-                  <span class="pause-icon" aria-hidden="true"><span></span><span></span></span>
-                  <span class="pause-text">일시정지</span>
-                </button>
-                <div id="waveform" class="waveform" aria-hidden="true"></div>
-                <button id="endButton" class="end-button" type="button" disabled>End</button>
-              </div>
-
-              <p id="recordingMessage" class="recording-message">
-                녹음 파일을 저장 중입니다. 회의 종료 후 전체 음성을 전사하고 요약합니다.
-              </p>
-            </section>
-
-            <section class="transcript-panel" aria-label="전사 결과">
+            <section class="transcript-panel" aria-label="실시간 전사">
               <div class="section-title">
-                <h3>전사 결과</h3>
+                <h3>실시간 전사</h3>
                 <span id="transcriptCount">0개 문장</span>
               </div>
-              <div id="liveText" class="live-text">회의 종료 후 녹음 파일 전사 결과가 여기에 표시됩니다.</div>
+              <div id="liveText" class="live-text">회의를 시작하면 말한 내용이 여기에 표시됩니다.</div>
               <ol id="transcriptList" class="transcript-list">
-                <li class="empty-state">아직 전사 결과가 없습니다.</li>
+                <li class="empty-state">아직 확정된 전사 문장이 없습니다.</li>
               </ol>
             </section>
 
@@ -100,7 +82,7 @@
                 id="note"
                 placeholder="회의 중 남길 메모나 외부 전사 텍스트를 입력하세요."
               ></textarea>
-              <span>입력한 내용은 회의 종료 후 요약에 함께 반영됩니다.</span>
+              <span>입력한 내용은 별도 버튼 없이 회의 결과 요약에 자동 반영됩니다.</span>
             </label>
           </div>
         </article>
@@ -158,6 +140,6 @@
       </form>
     </dialog>
 
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/app-old.js"></script>
   </body>
 </html>
