@@ -326,13 +326,16 @@ function stopMediaStream() {
 }
 
 async function transcribeAudio(audioBlob) {
-  const audio = await blobToDataUrl(audioBlob);
+  const mimeType = normalizeAudioMimeType(audioBlob.type || 'audio/webm');
+  const upload = await createAudioUpload(audioBlob, mimeType);
+  await uploadAudioToStorage(upload, audioBlob, mimeType);
+
   const response = await fetch('/api/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      audio,
-      mimeType: audioBlob.type || 'audio/webm',
+      storagePath: upload.path,
+      mimeType,
     }),
   });
 
@@ -344,13 +347,46 @@ async function transcribeAudio(audioBlob) {
   return data.transcript || '';
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => resolve(reader.result));
-    reader.addEventListener('error', () => reject(reader.error));
-    reader.readAsDataURL(blob);
+async function createAudioUpload(audioBlob, mimeType) {
+  const response = await fetch('/api/audio-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileName: audioBlob.name || `meeting.${extensionForMimeType(mimeType)}`,
+      mimeType,
+      size: audioBlob.size,
+    }),
   });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return response.json();
+}
+
+async function uploadAudioToStorage(upload, audioBlob, mimeType) {
+  const uploadBlob = audioBlob.type === mimeType ? audioBlob : new Blob([audioBlob], { type: mimeType });
+  const formData = new FormData();
+  formData.append('cacheControl', '60');
+  formData.append('', uploadBlob);
+
+  const response = await fetch(upload.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'x-upsert': 'false',
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+}
+
+function normalizeAudioMimeType(mimeType) {
+  const normalized = String(mimeType || '').split(';')[0].trim().toLowerCase();
+  return normalized.startsWith('audio/') ? normalized : 'audio/webm';
 }
 
 function setTranscriptFromText(transcript) {
@@ -703,6 +739,15 @@ function shortenError(message) {
   } catch {
     return String(message).slice(0, 90);
   }
+}
+
+function extensionForMimeType(mimeType) {
+  if (mimeType.includes('mp4')) return 'mp4';
+  if (mimeType.includes('m4a')) return 'm4a';
+  if (mimeType.includes('mpeg')) return 'mp3';
+  if (mimeType.includes('wav')) return 'wav';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return 'webm';
 }
 
 function setStatus(message) {

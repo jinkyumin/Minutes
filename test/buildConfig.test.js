@@ -22,6 +22,7 @@ test('includes old version page in production build inputs', async () => {
 test('local development server routes API handlers', async () => {
   const server = await readFile('server.js', 'utf8');
 
+  assert.match(server, /\/api\/audio-upload/);
   assert.match(server, /\/api\/transcribe/);
   assert.match(server, /\/api\/summarize/);
 });
@@ -32,4 +33,12 @@ test('main page exposes temporary audio upload controls', async () => {
   assert.match(html, /uploadAudioButton/);
   assert.match(html, /audioFileInput/);
   assert.match(html, /accept="audio\/\*/);
+});
+
+test('client uploads audio through storage before transcribing', async () => {
+  const app = await readFile('src/app.js', 'utf8');
+
+  assert.match(app, /\/api\/audio-upload/);
+  assert.match(app, /storagePath/);
+  assert.match(app, /normalizeAudioMimeType/);
 });

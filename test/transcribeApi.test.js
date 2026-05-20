@@ -92,6 +92,85 @@ test('transcribe API rejects missing audio', async () => {
   assert.match(JSON.parse(response.body).error, /Audio is required/);
 });
 
+test('transcribe API rejects audio that is too large for inline requests', async () => {
+  const response = createResponse();
+  await transcribeHandler(
+    createRequest('POST', {
+      audio: 'a'.repeat(4_000_001),
+      mimeType: 'audio/webm',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 413);
+  assert.match(JSON.parse(response.body).error, /too large/);
+});
+
+test('transcribe API downloads storage audio and deletes it after transcription', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  const originalSupabaseUrl = process.env.SUPABASE_URL;
+  const originalSupabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.SUPABASE_URL = 'https://project.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+
+  const urls = [];
+  let geminiBody;
+  globalThis.fetch = async (url, options = {}) => {
+    urls.push({ url, options });
+
+    if (String(url).includes('/storage/v1/object/meeting-audio/recordings/audio.webm')) {
+      if (options.method === 'DELETE') {
+        return jsonResponse({ ok: true });
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        async arrayBuffer() {
+          return Uint8Array.from([1, 2, 3]).buffer;
+        },
+        async text() {
+          return '';
+        },
+      };
+    }
+
+    if (String(url).includes('generativelanguage.googleapis.com')) {
+      geminiBody = JSON.parse(options.body);
+      return jsonResponse({
+        candidates: [{ content: { parts: [{ text: 'Storage 전사 결과입니다.' }] } }],
+      });
+    }
+
+    return jsonResponse({ ok: true });
+  };
+
+  const response = createResponse();
+  await transcribeHandler(
+    createRequest('POST', {
+      storagePath: 'recordings/audio.webm',
+      mimeType: 'audio/webm',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), { transcript: 'Storage 전사 결과입니다.' });
+  assert.equal(geminiBody.contents[0].parts[0].inlineData.data, Buffer.from([1, 2, 3]).toString('base64'));
+  assert.ok(urls.some((request) => request.options.method === 'DELETE'));
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalGeminiKey);
+  restoreEnv('SUPABASE_URL', originalSupabaseUrl);
+  restoreEnv('SUPABASE_SERVICE_ROLE_KEY', originalSupabaseKey);
+  globalThis.fetch = originalFetch;
+});
+
 function createRequest(method, body) {
   return { method, body };
 }

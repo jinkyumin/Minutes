@@ -1,3 +1,7 @@
+import { deleteAudioObject, downloadAudioObject } from './supabaseStorage.js';
+
+const MAX_INLINE_AUDIO_BASE64_LENGTH = 4_000_000;
+
 export default async function handler(request, response) {
   setJson(response);
 
@@ -7,22 +11,37 @@ export default async function handler(request, response) {
 
   const body = readBody(request);
   const audioInput = parseAudioInput(body.audio);
-  const audioData = audioInput.data;
+  const storagePath = body.storagePath || '';
+  const audioData = storagePath ? '' : audioInput.data;
   const mimeType = normalizeAudioMimeType(body.mimeType || audioInput.mimeType || 'audio/webm');
 
-  if (!audioData) {
+  if (!audioData && !storagePath) {
     return response.status(400).json({ error: 'Audio is required.' });
   }
 
+  if (audioData.length > MAX_INLINE_AUDIO_BASE64_LENGTH) {
+    return response.status(413).json({
+      error: 'Audio file is too large for inline transcription. Please upload a shorter recording.',
+    });
+  }
+
   try {
+    const resolvedAudioData = storagePath
+      ? bytesToBase64(await downloadAudioObject(storagePath))
+      : audioData;
+
     const transcript =
       resolveProvider() === 'openai'
-        ? await transcribeWithOpenAI(audioData, mimeType)
-        : await transcribeWithGemini(audioData, mimeType);
+        ? await transcribeWithOpenAI(resolvedAudioData, mimeType)
+        : await transcribeWithGemini(resolvedAudioData, mimeType);
 
     return response.status(200).json({ transcript });
   } catch (error) {
     return response.status(500).json({ error: error.message || 'Transcription failed.' });
+  } finally {
+    if (storagePath) {
+      await deleteAudioObject(storagePath);
+    }
   }
 }
 
@@ -148,6 +167,10 @@ function parseGeminiText(data) {
 
 function base64ToBytes(base64) {
   return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+}
+
+function bytesToBase64(bytes) {
+  return Buffer.from(bytes).toString('base64');
 }
 
 function extensionForMimeType(mimeType) {
