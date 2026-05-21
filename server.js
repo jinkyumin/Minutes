@@ -15,6 +15,7 @@ const apiHandlers = {
   '/api/summarize': () => import('./api/summarize.js'),
   '/api/transcribe': () => import('./api/transcribe.js'),
   '/api/audio-upload': () => import('./api/audio-upload.js'),
+  '/api/audio-cleanup': () => import('./api/audio-cleanup.js'),
   '/api/notion': () => import('./api/notion.js'),
   '/api/meetings': () => import('./api/meetings.js'),
 };

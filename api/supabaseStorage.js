@@ -50,11 +50,15 @@ export async function downloadAudioObject(path) {
 export async function deleteAudioObject(path) {
   if (!path || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
 
-  await fetch(`${storageBaseUrl()}/object/${audioBucket()}`, {
+  const response = await fetch(`${storageBaseUrl()}/object/${audioBucket()}`, {
     method: 'DELETE',
     headers: storageHeaders(),
     body: JSON.stringify({ prefixes: [path] }),
   });
+
+  if (!response.ok) {
+    throw new Error(createStorageErrorMessage('녹음파일 삭제', response.status, await response.text()));
+  }
 }
 
 function assertSupabaseConfigured() {

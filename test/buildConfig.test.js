@@ -23,6 +23,7 @@ test('local development server routes API handlers', async () => {
   const server = await readFile('server.js', 'utf8');
 
   assert.match(server, /\/api\/audio-upload/);
+  assert.match(server, /\/api\/audio-cleanup/);
   assert.match(server, /\/api\/transcribe/);
   assert.match(server, /\/api\/summarize/);
 });
@@ -39,6 +40,7 @@ test('client uploads audio through storage before transcribing', async () => {
   const app = await readFile('src/app.js', 'utf8');
 
   assert.match(app, /\/api\/audio-upload/);
+  assert.match(app, /\/api\/audio-cleanup/);
   assert.match(app, /storagePath/);
   assert.match(app, /normalizeAudioMimeType/);
 });

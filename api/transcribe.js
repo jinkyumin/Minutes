@@ -40,7 +40,11 @@ export default async function handler(request, response) {
     return response.status(500).json({ error: error.message || 'Transcription failed.' });
   } finally {
     if (storagePath) {
-      await deleteAudioObject(storagePath);
+      try {
+        await deleteAudioObject(storagePath);
+      } catch (error) {
+        console.warn('Temporary audio cleanup failed:', error.message);
+      }
     }
   }
 }

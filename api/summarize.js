@@ -209,24 +209,42 @@ function parseGeminiSummary(data) {
 }
 
 function parseJsonObject(text) {
+  const cleanedText = cleanJsonLikeText(text);
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleanedText);
   } catch {
-    return JSON.parse(escapeRawControlCharacters(text));
+    return JSON.parse(escapeRawControlCharacters(cleanedText));
   }
 }
 
 function parseLooseSummary(text) {
-  const cleanedText = text
+  const cleanedText = cleanJsonLikeText(text);
+
+  return {
+    overview: cleanSummaryText(extractLooseString(cleanedText, 'overview') || extractFirstMeaningfulSentence(cleanedText)),
+    keyPoints: extractLooseArray(cleanedText, 'keyPoints'),
+    actionItems: extractLooseArray(cleanedText, 'actionItems'),
+  };
+}
+
+function cleanJsonLikeText(text) {
+  let cleanedText = String(text || '')
     .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();
 
-  return {
-    overview: extractLooseString(cleanedText, 'overview') || cleanedText,
-    keyPoints: extractLooseArray(cleanedText, 'keyPoints'),
-    actionItems: extractLooseArray(cleanedText, 'actionItems'),
-  };
+  while (/^\(\s*\{[\s\S]*\}\s*\)$/u.test(cleanedText)) {
+    cleanedText = cleanedText.replace(/^\(\s*/u, '').replace(/\s*\)$/u, '').trim();
+  }
+
+  const objectStart = cleanedText.indexOf('{');
+  const objectEnd = cleanedText.lastIndexOf('}');
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    cleanedText = cleanedText.slice(objectStart, objectEnd + 1).trim();
+  }
+
+  return cleanedText;
 }
 
 function extractLooseString(text, fieldName) {
@@ -292,10 +310,29 @@ function escapeRawControlCharacters(text) {
 
 function normalizeSummary(summary) {
   return {
-    overview: String(summary.overview || ''),
-    keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints.map(String) : [],
-    actionItems: Array.isArray(summary.actionItems) ? summary.actionItems.map(String) : [],
+    overview: cleanSummaryText(summary.overview),
+    keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints.map(cleanSummaryText).filter(Boolean) : [],
+    actionItems: Array.isArray(summary.actionItems) ? summary.actionItems.map(cleanSummaryText).filter(Boolean) : [],
   };
+}
+
+function cleanSummaryText(text) {
+  return String(text || '')
+    .replace(/^\(?\s*\{?\s*"?(overview|keyPoints|actionItems)"?\s*:\s*/iu, '')
+    .replace(/[{}[\]]/g, '')
+    .replace(/\\n/g, '\n')
+    .trim();
+}
+
+function extractFirstMeaningfulSentence(text) {
+  const withoutJsonKeys = String(text || '')
+    .replace(/"?overview"?\s*:/giu, '')
+    .replace(/"?keyPoints"?\s*:\s*\[[\s\S]*$/iu, '')
+    .replace(/"?actionItems"?\s*:\s*\[[\s\S]*$/iu, '')
+    .replace(/[{}[\]]/g, '')
+    .trim();
+
+  return withoutJsonKeys.split(/(?<=[.!?。！？])\s+/u)[0] || withoutJsonKeys;
 }
 
 function setJson(response) {

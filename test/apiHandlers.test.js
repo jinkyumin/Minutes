@@ -271,6 +271,45 @@ test('summarize API salvages malformed Gemini JSON instead of failing', async ()
   globalThis.fetch = originalFetch;
 });
 
+test('summarize API does not expose raw parenthesized JSON fragments', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+
+  globalThis.fetch = async () => jsonResponse({
+    candidates: [
+      {
+        content: {
+          parts: [
+            {
+              text: '({"overview":"10월 매출 목표 초과와 연간 손익 목표 미달 상황을 논의했습니다.","keyPoints":["10월 목표 초과","연간 손익 미달"],"actionItems":["11월과 12월 총력전 진행"]})',
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  const response = createResponse();
+  await summarizeHandler(createRequest('POST', { transcript: '10월 매출 목표와 연간 손익 목표를 논의했습니다.' }), response);
+
+  assert.equal(response.statusCode, 200);
+  const summary = JSON.parse(response.body);
+  assert.equal(summary.overview, '10월 매출 목표 초과와 연간 손익 목표 미달 상황을 논의했습니다.');
+  assert.ok(!summary.overview.includes('overview'));
+  assert.ok(!summary.overview.includes('{'));
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  globalThis.fetch = originalFetch;
+});
+
 test('summarize API rejects missing OpenAI key', async () => {
   const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.OPENAI_API_KEY;

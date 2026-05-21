@@ -330,21 +330,25 @@ async function transcribeAudio(audioBlob) {
   const upload = await createAudioUpload(audioBlob, mimeType);
   await uploadAudioToStorage(upload, audioBlob, mimeType);
 
-  const response = await fetch('/api/transcribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      storagePath: upload.path,
-      mimeType,
-    }),
-  });
+  try {
+    const response = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storagePath: upload.path,
+        mimeType,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(await response.text());
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json();
+    return data.transcript || '';
+  } finally {
+    void cleanupUploadedAudio(upload.path);
   }
-
-  const data = await response.json();
-  return data.transcript || '';
 }
 
 async function createAudioUpload(audioBlob, mimeType) {
@@ -381,6 +385,20 @@ async function uploadAudioToStorage(upload, audioBlob, mimeType) {
 
   if (!response.ok) {
     throw new Error(await response.text());
+  }
+}
+
+async function cleanupUploadedAudio(storagePath) {
+  if (!storagePath) return;
+
+  try {
+    await fetch('/api/audio-cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storagePath }),
+    });
+  } catch {
+    // Server-side cleanup is the primary path; this is a best-effort fallback.
   }
 }
 
