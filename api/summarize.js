@@ -99,6 +99,51 @@ async function summarizeWithOpenAI(body, transcript, note) {
   }
 
   const data = await openAiResponse.json();
+  const summary = normalizeSummary(parseOpenAiOutput(data));
+
+  if (isWeakSummary(summary, transcript, note)) {
+    return retryOpenAiSummary(body, transcript, note, summary);
+  }
+
+  return summary;
+}
+
+async function retryOpenAiSummary(body, transcript, note, previousSummary) {
+  const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: resolveOpenAiModel(process.env.OPENAI_MODEL),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'meeting_summary',
+          strict: true,
+          schema: summaryJsonSchema(),
+        },
+      },
+      input: [
+        {
+          role: 'system',
+          content:
+            'You write detailed Korean business meeting minutes. Return only strict JSON with overview, keyPoints, actionItems, and sections.',
+        },
+        {
+          role: 'user',
+          content: buildPrompt(body, transcript, note, { previousSummary, retry: true }),
+        },
+      ],
+    }),
+  });
+
+  if (!openAiResponse.ok) {
+    throw new Error(await openAiResponse.text());
+  }
+
+  const data = await openAiResponse.json();
   return normalizeSummary(parseOpenAiOutput(data));
 }
 
@@ -119,7 +164,10 @@ async function summarizeWithGemini(body, transcript, note) {
     }
 
     const fallbackData = await fallbackResponse.json();
-    return parseGeminiSummary(fallbackData);
+    const fallbackSummary = parseGeminiSummary(fallbackData);
+    return isWeakSummary(fallbackSummary, transcript, note)
+      ? retryGeminiSummary(fallbackModel, body, transcript, note, fallbackSummary)
+      : fallbackSummary;
   }
 
   if (!geminiResponse.ok) {
@@ -127,10 +175,29 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const data = await geminiResponse.json();
-  return parseGeminiSummary(data);
+  const summary = parseGeminiSummary(data);
+
+  if (isWeakSummary(summary, transcript, note)) {
+    return retryGeminiSummary(model, body, transcript, note, summary);
+  }
+
+  return summary;
 }
 
-async function requestGeminiSummary(model, body, transcript, note) {
+async function retryGeminiSummary(model, body, transcript, note, previousSummary) {
+  const response = await requestGeminiSummary(model, body, transcript, note, {
+    previousSummary,
+    retry: true,
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return parseGeminiSummary(await response.json());
+}
+
+async function requestGeminiSummary(model, body, transcript, note, options = {}) {
   return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -142,7 +209,7 @@ async function requestGeminiSummary(model, body, transcript, note) {
         generationConfig: {
           temperature: 0.2,
           topP: 0.9,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'OBJECT',
@@ -178,7 +245,7 @@ async function requestGeminiSummary(model, body, transcript, note) {
         contents: [
           {
             role: 'user',
-            parts: [{ text: buildPrompt(body, transcript, note) }],
+            parts: [{ text: buildPrompt(body, transcript, note, options) }],
           },
         ],
       }),
@@ -186,8 +253,16 @@ async function requestGeminiSummary(model, body, transcript, note) {
   );
 }
 
-function buildPrompt(body, transcript, note) {
+function buildPrompt(body, transcript, note, options = {}) {
   return [
+    ...(options.retry
+      ? [
+          '이전 회의록 결과가 너무 짧거나 추상적이어서 재작성합니다.',
+          '이번 응답은 반드시 상세 섹션 중심으로 다시 작성하세요.',
+          `이전 결과:\n${JSON.stringify(options.previousSummary || {})}`,
+          '',
+        ]
+      : []),
     '다음 한국어 회의 내용을 업무용 회의록 문서로 정리하세요.',
     '작업 순서: 1) 전사 내용을 먼저 핵심 카테고리로 그룹핑 2) 그룹핑 결과를 바탕으로 회의록 작성.',
     '반드시 JSON만 반환하세요.',
@@ -246,6 +321,44 @@ function buildPrompt(body, transcript, note) {
     '',
     `전사:\n${transcript || '없음'}`,
   ].join('\n');
+}
+
+function summaryJsonSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      overview: { type: 'string' },
+      keyPoints: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      actionItems: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      sections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            title: { type: 'string' },
+            items: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+            type: {
+              type: 'string',
+              enum: ['paragraph', 'list'],
+            },
+          },
+          required: ['title', 'items', 'type'],
+        },
+      },
+    },
+    required: ['overview', 'keyPoints', 'actionItems', 'sections'],
+  };
 }
 
 function resolveOpenAiModel(model) {
@@ -418,8 +531,8 @@ function normalizeSections(summary) {
   return [
     {
       title: '회의 요약',
-      items: [cleanSummaryText(summary.overview)].filter(Boolean),
-      type: 'paragraph',
+      items: splitOverviewItems([cleanSummaryText(summary.overview)].filter(Boolean)),
+      type: 'list',
     },
     {
       title: '회의 주요내용',
@@ -432,6 +545,22 @@ function normalizeSections(summary) {
       type: 'list',
     },
   ].filter((section) => section.items.length > 0);
+}
+
+function isWeakSummary(summary, transcript, note) {
+  const sourceLength = `${transcript || ''}\n${note || ''}`.trim().length;
+  if (sourceLength < 1200) return false;
+
+  const sections = Array.isArray(summary.sections) ? summary.sections : [];
+  const itemCount = sections.reduce((count, section) => count + (section.items?.length || 0), 0);
+  const hasStructuredSection = sections.some((section) =>
+    (section.items || []).some((item) => String(item).includes('|') || /^.{1,24}[:：]\s+/.test(String(item))),
+  );
+  const hasExpectedBusinessSections = sections.filter((section) =>
+    /운영|구조|쟁점|리스크|대안|액션|일정|결정|후속/u.test(section.title || ''),
+  ).length;
+
+  return sections.length < 5 || itemCount < 12 || !hasStructuredSection || hasExpectedBusinessSections < 3;
 }
 
 function splitOverviewItems(items) {

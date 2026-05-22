@@ -41,7 +41,7 @@ test('summarize API calls OpenAI and returns normalized summary', async () => {
     keyPoints: ['핵심 1'],
     actionItems: ['할 일 1'],
     sections: [
-      { title: '회의 요약', items: ['회의 개요임.'], type: 'paragraph' },
+      { title: '회의 요약', items: ['회의 개요임.'], type: 'list' },
       { title: '회의 주요내용', items: ['핵심 1'], type: 'list' },
       { title: '액션 아이템', items: ['할 일 1'], type: 'list' },
     ],
@@ -104,7 +104,7 @@ test('summarize API calls Gemini when selected', async () => {
     keyPoints: ['Gemini 핵심 1'],
     actionItems: ['Gemini 할 일 1'],
     sections: [
-      { title: '회의 요약', items: ['Gemini 회의 개요임.'], type: 'paragraph' },
+      { title: '회의 요약', items: ['Gemini 회의 개요임.'], type: 'list' },
       { title: '회의 주요내용', items: ['Gemini 핵심 1'], type: 'list' },
       { title: '액션 아이템', items: ['Gemini 할 일 1'], type: 'list' },
     ],
@@ -116,7 +116,7 @@ test('summarize API calls Gemini when selected', async () => {
   const geminiBody = JSON.parse(capturedRequest.options.body);
   assert.equal(geminiBody.generationConfig.temperature, 0.2);
   assert.equal(geminiBody.generationConfig.topP, 0.9);
-  assert.equal(geminiBody.generationConfig.maxOutputTokens, 4096);
+  assert.equal(geminiBody.generationConfig.maxOutputTokens, 8192);
   assert.match(geminiBody.contents[0].parts[0].text, /발언자를 제거하고/);
 
   restoreEnv('LLM_PROVIDER', originalProvider);
@@ -179,7 +179,7 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
     keyPoints: ['fallback key point'],
     actionItems: [],
     sections: [
-      { title: '회의 요약', items: ['fallback summary'], type: 'paragraph' },
+      { title: '회의 요약', items: ['fallback summary'], type: 'list' },
       { title: '회의 주요내용', items: ['fallback key point'], type: 'list' },
     ],
   });
@@ -233,7 +233,7 @@ test('summarize API repairs Gemini JSON with raw multiline strings', async () =>
     keyPoints: ['핵심'],
     actionItems: [],
     sections: [
-      { title: '회의 요약', items: ['첫 줄\n둘째 줄'], type: 'paragraph' },
+      { title: '회의 요약', items: ['첫 줄\n둘째 줄'], type: 'list' },
       { title: '회의 주요내용', items: ['핵심'], type: 'list' },
     ],
   });
@@ -284,8 +284,8 @@ test('summarize API salvages malformed Gemini JSON instead of failing', async ()
     sections: [
       {
         title: '회의 요약',
-        items: ['SAP "Public Cloud" 도입 방향을 논의함.\n재무 통합과 공시 대응이 핵심임.'],
-        type: 'paragraph',
+        items: ['SAP "Public Cloud" 도입 방향을 논의함.', '재무 통합과 공시 대응이 핵심임.'],
+        type: 'list',
       },
       { title: '회의 주요내용', items: ['퍼블릭과 프라이빗 비교', 'DDA 재검토 필요'], type: 'list' },
       { title: '액션 아이템', items: ['자료 공유'], type: 'list' },
