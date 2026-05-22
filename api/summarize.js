@@ -194,19 +194,29 @@ function buildPrompt(body, transcript, note) {
     'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
     '',
     'sections 작성 규칙:',
+    '- sections는 화면에 그대로 표시되는 최종 회의록입니다. overview/keyPoints/actionItems보다 sections 품질을 최우선으로 작성하세요.',
+    '- 첫 번째 섹션은 반드시 "회의 요약"이고 type은 반드시 "list"입니다.',
+    '- "회의 요약"은 긴 문단 금지. 핵심 결론, 현재 구조, 쟁점, 우선 검토 방향을 4~6개 항목으로 작성하세요.',
     '- 기본 섹션은 "회의 요약", "회의 주요내용", "액션 아이템", "다음 일정"입니다.',
     '- 전사문에 실제로 등장한 내용만 사용하세요.',
     '- 전사문에 없는 내용은 추측하거나 일반론으로 채우지 마세요.',
     '- 특정 섹션에 쓸 내용이 없으면 그 섹션은 생략해도 됩니다.',
     '- 전사문에 별도 구분이 필요한 주제가 명확히 있으면 적절한 섹션을 추가하세요.',
-    '- 전사량이 충분하면 5개 이상의 섹션으로 나누어 상세 정리하세요.',
-    '- 추가 가능한 섹션 예시는 "현재 운영 구조", "제안 구조", "핵심 쟁점", "리스크", "검토 대안", "주요 수치", "결정사항", "본부별 요청사항", "후속 검토사항"입니다. 단, 실제 내용이 있을 때만 추가하세요.',
-    '- "회의 요약"은 type을 "paragraph"로 하고 3~5개의 구체 사실을 한 문단으로 압축하세요.',
-    '- "회의 요약"에는 회의 주제 반복이 아니라 핵심 결론, 주요 쟁점, 우선 검토 방향을 포함하세요.',
+    '- 전사량이 충분하면 6개 이상의 섹션으로 나누어 상세 정리하세요.',
+    '- 시스템, 계약, 정산, 운영, 리스크, 대안이 언급된 회의는 "현재 운영 구조", "요구/제안 구조", "핵심 쟁점 및 리스크", "검토 대안", "액션 아이템", "주요 일정" 섹션을 우선 사용하세요.',
+    '- 추가 가능한 섹션 예시는 "주요 수치", "결정사항", "본부별 요청사항", "후속 검토사항", "참고 구조"입니다. 단, 실제 내용이 있을 때만 추가하세요.',
     '- 나머지 섹션은 type을 "list"로 하고 핵심 내용을 항목별로 구체적으로 작성하세요.',
     '- 회의 주요내용은 최소 5개 이상, 가능한 경우 8~12개 항목으로 작성하세요.',
     '- 비교, 운영 구조, 쟁점처럼 항목/내용으로 볼 때 좋은 섹션은 items를 "항목: 내용" 형식으로 작성하세요.',
+    '- 검토 대안은 가능하면 items를 "대안: 이름 | 내용: 설명 | 판단: 평가" 형식으로 작성하세요.',
     '- 액션 아이템은 가능하면 items를 "담당: 담당자 또는 조직 | 액션: 할 일 | 기한: 일정 또는 시점" 형식으로 작성하세요.',
+    '- 주요 일정은 가능하면 items를 "일정: 날짜 또는 시점 | 내용: 일정 내용" 형식으로 작성하세요.',
+    '',
+    '좋은 출력 예시:',
+    '- 현재 운영 구조: NICE VAN 사용, 카드 매출 대사 후 롯데에 데이터 전달',
+    '- 핵심 쟁점: 농협VAN 직접 적용 시 POS 통신 모듈, 리더기, 인증 변경 필요',
+    '- 검토 대안: 대안: NICE 중계 라우팅 | 내용: 농협 거래만 농협VAN으로 라우팅 가능성 확인 | 판단: 우선 검토안',
+    '- 액션 아이템: 담당: 유통관리팀/IT | 액션: NICE에 농협VAN 라우팅 가능 여부 문의 | 기한: NICE 미팅 시',
     '',
     '품질 규칙:',
     '- 발언자를 제거하고 중복 발화, 말더듬, 반복 문장을 통합하세요.',
@@ -217,12 +227,14 @@ function buildPrompt(body, transcript, note) {
     '- 다음 일정은 날짜, 기간, 후속 회의, 마감 시점이 언급된 경우에만 작성하세요.',
     '- 단순 질문, 잡담, 미완성 문장은 할 일로 만들지 마세요.',
     '- 문장은 업무 보고서처럼 간결하고 명확하게 작성하세요.',
+    '- 요약만 하고 끝내지 말고, 전사에서 확인되는 운영 구조와 대안을 표로 볼 수 있게 항목화하세요.',
     '- "논의 진행", "필요성 확인", "핵심 과제로 부상"처럼 정보량이 낮은 추상 표현은 쓰지 마세요.',
     '- 대신 "NICE 중계 서버를 통한 농협VAN 라우팅 가능 여부 확인 필요"처럼 대상과 조치를 구체적으로 쓰세요.',
     '',
     '문체 규칙:',
     '- "~한다", "~했다", "~되었다", "~있다" 같은 서술형 종결을 쓰지 마세요.',
     '- 모든 문장은 "~함", "~필요", "~예정", "~가능성 있음", "~우려", "~권고", "~확인 필요" 같은 명사형/메모형 마침으로 작성하세요.',
+    '- "제기됨", "부상함", "타진"처럼 추상적이거나 기사체 느낌의 표현을 피하고 "우려", "핵심 과제", "확인 필요"처럼 쓰세요.',
     '- 예: "농협VAN 사용을 요구했다" 금지. "농협VAN 사용 요구" 또는 "농협VAN 사용 요구 확인" 권장.',
     '- 예: "리스크가 있다" 금지. "리스크 있음" 권장.',
     '',
@@ -385,7 +397,7 @@ function normalizeSummary(summary) {
 
 function normalizeSections(summary) {
   if (Array.isArray(summary.sections) && summary.sections.length > 0) {
-    return summary.sections
+    const sections = summary.sections
       .map((section) => ({
         title: cleanSummaryText(section?.title),
         items: Array.isArray(section?.items)
@@ -394,6 +406,13 @@ function normalizeSections(summary) {
         type: section?.type === 'paragraph' ? 'paragraph' : 'list',
       }))
       .filter((section) => section.title && section.items.length > 0);
+
+    if (sections[0]?.title === '회의 요약') {
+      sections[0].type = 'list';
+      sections[0].items = splitOverviewItems(sections[0].items);
+    }
+
+    return sections;
   }
 
   return [
@@ -413,6 +432,21 @@ function normalizeSections(summary) {
       type: 'list',
     },
   ].filter((section) => section.items.length > 0);
+}
+
+function splitOverviewItems(items) {
+  return items.flatMap((item) => {
+    const text = String(item || '').trim();
+    if (!text) return [];
+    if (text.includes('|') || /^.{1,24}[:：]\s+/.test(text)) return [text];
+
+    const sentences = text
+      .split(/(?<=[.!?。！？])\s+/u)
+      .map((sentence) => sentence.trim())
+      .filter(Boolean);
+
+    return sentences.length > 1 ? sentences : [text];
+  });
 }
 
 function extractLooseSections(text) {
@@ -442,6 +476,9 @@ function toMemoEnding(text) {
     .replace(/필요성 확인/g, '필요 확인')
     .replace(/핵심 과제로 부상함/g, '핵심 과제')
     .replace(/핵심 과제로 부상/g, '핵심 과제')
+    .replace(/제기됨/g, '우려')
+    .replace(/타진하고/g, '확인하고')
+    .replace(/타진/g, '확인')
     .replace(/필요합니다/g, '필요')
     .replace(/예정입니다/g, '예정')
     .replace(/가능성이 있습니다/g, '가능성 있음')
