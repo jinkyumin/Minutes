@@ -33,6 +33,7 @@ export function summarizeMeeting(entries) {
       overview: '전사된 회의 내용이 없습니다.',
       keyPoints: [],
       actionItems: [],
+      sections: [],
     };
   }
 
@@ -50,13 +51,20 @@ export function summarizeMeeting(entries) {
     .sort((left, right) => left.index - right.index)
     .map((item) => formatKeyPoint(item.sentence));
 
-  const fallbackKeyPoints = sentences.slice(0, 5);
-  const actionItems = sentences.filter(isActionItem).slice(0, 6);
+  const fallbackKeyPoints = sentences.slice(0, 5).map(toMemoEnding);
+  const actionItems = sentences.filter(isActionItem).slice(0, 6).map(toMemoEnding);
+  const overview = toMemoEnding(sentences[0]);
+  const normalizedKeyPoints = keyPoints.length > 0 ? keyPoints.map(toMemoEnding) : fallbackKeyPoints;
 
   return {
-    overview: sentences[0],
-    keyPoints: keyPoints.length > 0 ? keyPoints : fallbackKeyPoints,
+    overview,
+    keyPoints: normalizedKeyPoints,
     actionItems,
+    sections: [
+      { title: '회의 요약', items: [overview], type: 'paragraph' },
+      { title: '회의 주요내용', items: normalizedKeyPoints, type: 'list' },
+      { title: '액션 아이템', items: actionItems, type: 'list' },
+    ].filter((section) => section.items.length > 0),
   };
 }
 
@@ -90,4 +98,21 @@ function isActionItem(sentence) {
 
 function formatKeyPoint(sentence) {
   return sentence.replace(/^오늘은\s+/u, '');
+}
+
+function toMemoEnding(text) {
+  return String(text || '')
+    .replace(/필요합니다/g, '필요')
+    .replace(/예정입니다/g, '예정')
+    .replace(/가능성이 있습니다/g, '가능성 있음')
+    .replace(/우려됩니다/g, '우려')
+    .replace(/권고됩니다/g, '권고')
+    .replace(/되었습니다/g, '됨')
+    .replace(/됐습니다/g, '됨')
+    .replace(/됩니다/g, '됨')
+    .replace(/했습니다/g, '함')
+    .replace(/합니다/g, '함')
+    .replace(/입니다/g, '임')
+    .replace(/있습니다/g, '있음')
+    .replace(/없습니다/g, '없음');
 }

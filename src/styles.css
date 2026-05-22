@@ -455,28 +455,68 @@ label {
   line-height: 1.45;
 }
 
-.summary-section {
-  border-bottom: 1px solid #e5eaee;
-  padding-bottom: 15px;
-  margin-bottom: 15px;
+.summary-sections {
+  display: grid;
+  gap: 14px;
 }
 
-.summary-section:last-of-type {
-  border-bottom: 0;
+.summary-section {
+  border: 1px solid #dfe7ec;
+  border-radius: 10px;
+  padding: 15px;
+  background: #fbfdfe;
+}
+
+.summary-section[data-section-kind='overview'] {
+  border-color: #c8e3eb;
+  background: #f0f8fa;
+  box-shadow: inset 4px 0 0 #1f6f8b;
+}
+
+.summary-section[data-section-kind='risk'] {
+  border-color: #efd0d0;
+  background: #fff8f8;
+  box-shadow: inset 4px 0 0 #c66a6a;
+}
+
+.summary-section[data-section-kind='action'],
+.summary-section[data-section-kind='schedule'] {
+  border-color: #d9e2ec;
+  background: #f7fafc;
 }
 
 .summary-section h3 {
-  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
   font-size: 1rem;
   color: #142630;
   font-weight: 950;
 }
 
+.summary-section h3::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #1f6f8b;
+}
+
+.summary-section[data-section-kind='risk'] h3::before {
+  background: #c66a6a;
+}
+
+.summary-section[data-section-kind='action'] h3::before {
+  background: #2d8659;
+}
+
 .summary-overview,
-.summary-list {
+.summary-list,
+.summary-table {
   color: #263946;
-  font-weight: 750;
-  line-height: 1.6;
+  font-weight: 700;
+  line-height: 1.62;
 }
 
 .guidance-text {
@@ -487,6 +527,42 @@ label {
 .summary-list {
   margin: 0;
   padding-left: 20px;
+}
+
+.summary-list li + li {
+  margin-top: 8px;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.summary-table th,
+.summary-table td {
+  border: 1px solid #dbe4ea;
+  padding: 9px 10px;
+  vertical-align: top;
+}
+
+.summary-table th {
+  background: #edf4f7;
+  color: #142630;
+  font-weight: 950;
+  text-align: left;
+}
+
+.summary-table td {
+  background: #fff;
+  font-weight: 650;
+}
+
+.summary-table td:first-child {
+  color: #162a33;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .history-list {

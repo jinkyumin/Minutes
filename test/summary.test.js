@@ -9,6 +9,7 @@ test('returns an empty-state summary when there is no transcript', () => {
   assert.equal(summary.overview, '전사된 회의 내용이 없습니다.');
   assert.deepEqual(summary.keyPoints, []);
   assert.deepEqual(summary.actionItems, []);
+  assert.deepEqual(summary.sections, []);
 });
 
 test('extracts key points from meaningful transcript entries', () => {
@@ -18,9 +19,9 @@ test('extracts key points from meaningful transcript entries', () => {
     { text: '네.' },
   ]);
 
-  assert.equal(summary.overview, '오늘은 2분기 매출 목표와 신규 고객 온보딩 현황을 공유했습니다.');
-  assert.ok(summary.keyPoints.includes('2분기 매출 목표와 신규 고객 온보딩 현황을 공유했습니다.'));
-  assert.ok(summary.keyPoints.includes('다음 주까지 제안서 초안을 준비하고 금요일에 다시 검토하기로 했습니다.'));
+  assert.equal(summary.overview, '오늘은 2분기 매출 목표와 신규 고객 온보딩 현황을 공유함.');
+  assert.ok(summary.keyPoints.includes('2분기 매출 목표와 신규 고객 온보딩 현황을 공유함.'));
+  assert.ok(summary.keyPoints.includes('다음 주까지 제안서 초안을 준비하고 금요일에 다시 검토하기로 함.'));
 });
 
 test('detects likely action items', () => {
@@ -30,8 +31,8 @@ test('detects likely action items', () => {
   ]);
 
   assert.deepEqual(summary.actionItems, [
-    '민수님은 고객 피드백을 정리해야 합니다.',
-    '지연님은 다음 회의 전까지 디자인 시안을 공유하기로 했습니다.',
+    '민수님은 고객 피드백을 정리해야 함.',
+    '지연님은 다음 회의 전까지 디자인 시안을 공유하기로 함.',
   ]);
 });
 

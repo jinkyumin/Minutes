@@ -56,8 +56,27 @@ async function summarizeWithOpenAI(body, transcript, note) {
                 type: 'array',
                 items: { type: 'string' },
               },
+              sections: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: 'string' },
+                    items: {
+                      type: 'array',
+                      items: { type: 'string' },
+                    },
+                    type: {
+                      type: 'string',
+                      enum: ['paragraph', 'list'],
+                    },
+                  },
+                  required: ['title', 'items', 'type'],
+                },
+              },
             },
-            required: ['overview', 'keyPoints', 'actionItems'],
+            required: ['overview', 'keyPoints', 'actionItems', 'sections'],
           },
         },
       },
@@ -65,7 +84,7 @@ async function summarizeWithOpenAI(body, transcript, note) {
         {
           role: 'system',
           content:
-            'You summarize Korean meeting minutes. Return only strict JSON with overview, keyPoints, and actionItems.',
+            'You write concise Korean business meeting minutes. Return only strict JSON with overview, keyPoints, actionItems, and sections.',
         },
         {
           role: 'user',
@@ -123,7 +142,7 @@ async function requestGeminiSummary(model, body, transcript, note) {
         generationConfig: {
           temperature: 0.2,
           topP: 0.9,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 4096,
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'OBJECT',
@@ -137,8 +156,23 @@ async function requestGeminiSummary(model, body, transcript, note) {
                 type: 'ARRAY',
                 items: { type: 'STRING' },
               },
+              sections: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    title: { type: 'STRING' },
+                    items: {
+                      type: 'ARRAY',
+                      items: { type: 'STRING' },
+                    },
+                    type: { type: 'STRING' },
+                  },
+                  required: ['title', 'items', 'type'],
+                },
+              },
             },
-            required: ['overview', 'keyPoints', 'actionItems'],
+            required: ['overview', 'keyPoints', 'actionItems', 'sections'],
           },
         },
         contents: [
@@ -154,14 +188,37 @@ async function requestGeminiSummary(model, body, transcript, note) {
 
 function buildPrompt(body, transcript, note) {
   return [
-    '다음 한국어 회의 내용을 회의록으로 정리하세요.',
+    '다음 한국어 회의 내용을 업무용 회의록 문서로 정리하세요.',
+    '작업 순서: 1) 전사 내용을 먼저 핵심 카테고리로 그룹핑 2) 그룹핑 결과를 바탕으로 회의록 작성.',
     '반드시 JSON만 반환하세요.',
-    'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"]}',
-    '발언자를 제거하고 중복 발화, 말더듬, 반복 문장을 통합하세요.',
-    '개요는 회의 목적과 결론을 2~4문장으로 자연스럽게 작성하세요.',
-    '핵심 내용은 회의 목적, 핵심 논의, 결정사항, 미결사항, 리스크, 다음 일정 유형을 참고해 실제 회의에 나온 내용만 5~8개까지 정리하세요.',
-    '할 일은 액션 아이템 유형에 해당하는 명확한 후속 조치만 작성하고 담당자나 기한이 있으면 포함하세요.',
-    '단순 질문, 잡담, 미완성 문장은 할 일로 만들지 마세요.',
+    'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
+    '',
+    'sections 작성 규칙:',
+    '- 기본 섹션은 "회의 요약", "회의 주요내용", "액션 아이템", "다음 일정"입니다.',
+    '- 전사문에 실제로 등장한 내용만 사용하세요.',
+    '- 전사문에 없는 내용은 추측하거나 일반론으로 채우지 마세요.',
+    '- 특정 섹션에 쓸 내용이 없으면 그 섹션은 생략해도 됩니다.',
+    '- 전사문에 별도 구분이 필요한 주제가 명확히 있으면 적절한 섹션을 추가하세요.',
+    '- 추가 가능한 섹션 예시는 "현재 운영 구조", "제안 구조", "핵심 쟁점", "리스크", "검토 대안", "주요 수치", "결정사항", "본부별 요청사항", "후속 검토사항"입니다. 단, 실제 내용이 있을 때만 추가하세요.',
+    '- "회의 요약"은 type을 "paragraph"로 하고 2~4문장의 종합 문단으로 작성하세요.',
+    '- 나머지 섹션은 type을 "list"로 하고 핵심 내용을 항목별로 구체적으로 작성하세요.',
+    '- 비교, 운영 구조, 쟁점처럼 항목/내용으로 볼 때 좋은 섹션은 items를 "항목: 내용" 형식으로 작성하세요.',
+    '- 액션 아이템은 가능하면 items를 "담당: 담당자 또는 조직 | 액션: 할 일 | 기한: 일정 또는 시점" 형식으로 작성하세요.',
+    '',
+    '품질 규칙:',
+    '- 발언자를 제거하고 중복 발화, 말더듬, 반복 문장을 통합하세요.',
+    '- 숫자, 일정, 담당 조직, 고유명사는 가능한 한 보존하세요.',
+    '- 회의 주요내용은 회의 흐름과 논지를 이해할 수 있게 충분히 상세하게 작성하세요.',
+    '- 액션 아이템은 실제 후속 조치가 명확한 경우에만 작성하고 담당자나 기한이 있으면 포함하세요.',
+    '- 다음 일정은 날짜, 기간, 후속 회의, 마감 시점이 언급된 경우에만 작성하세요.',
+    '- 단순 질문, 잡담, 미완성 문장은 할 일로 만들지 마세요.',
+    '- 문장은 업무 보고서처럼 간결하고 명확하게 작성하세요.',
+    '',
+    '문체 규칙:',
+    '- "~한다", "~했다", "~되었다", "~있다" 같은 서술형 종결을 쓰지 마세요.',
+    '- 모든 문장은 "~함", "~필요", "~예정", "~가능성 있음", "~우려", "~권고", "~확인 필요" 같은 명사형/메모형 마침으로 작성하세요.',
+    '- 예: "농협VAN 사용을 요구했다" 금지. "농협VAN 사용 요구" 또는 "농협VAN 사용 요구 확인" 권장.',
+    '- 예: "리스크가 있다" 금지. "리스크 있음" 권장.',
     '',
     `회의 제목: ${body.title || '미입력'}`,
     `회의 일시: ${body.meetingDateTime || '미입력'}`,
@@ -225,6 +282,7 @@ function parseLooseSummary(text) {
     overview: cleanSummaryText(extractLooseString(cleanedText, 'overview') || extractFirstMeaningfulSentence(cleanedText)),
     keyPoints: extractLooseArray(cleanedText, 'keyPoints'),
     actionItems: extractLooseArray(cleanedText, 'actionItems'),
+    sections: extractLooseSections(cleanedText),
   };
 }
 
@@ -309,19 +367,83 @@ function escapeRawControlCharacters(text) {
 }
 
 function normalizeSummary(summary) {
+  const sections = normalizeSections(summary);
+
   return {
     overview: cleanSummaryText(summary.overview),
     keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints.map(cleanSummaryText).filter(Boolean) : [],
     actionItems: Array.isArray(summary.actionItems) ? summary.actionItems.map(cleanSummaryText).filter(Boolean) : [],
+    sections,
   };
 }
 
+function normalizeSections(summary) {
+  if (Array.isArray(summary.sections) && summary.sections.length > 0) {
+    return summary.sections
+      .map((section) => ({
+        title: cleanSummaryText(section?.title),
+        items: Array.isArray(section?.items)
+          ? section.items.map(cleanSummaryText).filter(Boolean)
+          : [],
+        type: section?.type === 'paragraph' ? 'paragraph' : 'list',
+      }))
+      .filter((section) => section.title && section.items.length > 0);
+  }
+
+  return [
+    {
+      title: '회의 요약',
+      items: [cleanSummaryText(summary.overview)].filter(Boolean),
+      type: 'paragraph',
+    },
+    {
+      title: '회의 주요내용',
+      items: Array.isArray(summary.keyPoints) ? summary.keyPoints.map(cleanSummaryText).filter(Boolean) : [],
+      type: 'list',
+    },
+    {
+      title: '액션 아이템',
+      items: Array.isArray(summary.actionItems) ? summary.actionItems.map(cleanSummaryText).filter(Boolean) : [],
+      type: 'list',
+    },
+  ].filter((section) => section.items.length > 0);
+}
+
+function extractLooseSections(text) {
+  const match = text.match(/"sections"\s*:\s*\[([\s\S]*?)\]\s*\}?$/u);
+  if (!match) return [];
+
+  return [...match[1].matchAll(/\{\s*"title"\s*:\s*"([^"]+)"\s*,\s*"items"\s*:\s*\[([\s\S]*?)\]\s*,\s*"type"\s*:\s*"([^"]+)"\s*\}/gu)]
+    .map((sectionMatch) => ({
+      title: sectionMatch[1],
+      items: [...sectionMatch[2].matchAll(/"([^"]+)"/g)].map((item) => item[1]),
+      type: sectionMatch[3],
+    }));
+}
+
 function cleanSummaryText(text) {
-  return String(text || '')
+  return toMemoEnding(String(text || '')
     .replace(/^\(?\s*\{?\s*"?(overview|keyPoints|actionItems)"?\s*:\s*/iu, '')
     .replace(/[{}[\]]/g, '')
     .replace(/\\n/g, '\n')
-    .trim();
+    .trim());
+}
+
+function toMemoEnding(text) {
+  return text
+    .replace(/필요합니다/g, '필요')
+    .replace(/예정입니다/g, '예정')
+    .replace(/가능성이 있습니다/g, '가능성 있음')
+    .replace(/우려됩니다/g, '우려')
+    .replace(/권고됩니다/g, '권고')
+    .replace(/되었습니다/g, '됨')
+    .replace(/됐습니다/g, '됨')
+    .replace(/됩니다/g, '됨')
+    .replace(/했습니다/g, '함')
+    .replace(/합니다/g, '함')
+    .replace(/입니다/g, '임')
+    .replace(/있습니다/g, '있음')
+    .replace(/없습니다/g, '없음');
 }
 
 function extractFirstMeaningfulSentence(text) {

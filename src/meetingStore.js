@@ -60,9 +60,24 @@ function normalizeRecord(record) {
       overview: summary.overview || '',
       keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints : [],
       actionItems: Array.isArray(summary.actionItems) ? summary.actionItems : [],
+      sections: normalizeSummarySections(summary),
     },
     savedAt: record?.savedAt || new Date().toISOString(),
   };
+}
+
+function normalizeSummarySections(summary = {}) {
+  if (!Array.isArray(summary.sections)) return [];
+
+  return summary.sections
+    .map((section) => ({
+      title: String(section?.title || '').trim(),
+      items: Array.isArray(section?.items)
+        ? section.items.map(String).map((item) => item.trim()).filter(Boolean)
+        : [],
+      type: section?.type === 'paragraph' ? 'paragraph' : 'list',
+    }))
+    .filter((section) => section.title && section.items.length > 0);
 }
 
 function createId() {

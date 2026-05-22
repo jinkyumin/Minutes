@@ -44,6 +44,6 @@ test('formats meeting markdown for copy and Notion export', () => {
   assert.match(markdown, /SAP public review/);
   assert.match(markdown, /# SAP public review/);
   assert.match(markdown, /## Note\n회의 중 확인한 참고 메모/);
-  assert.match(markdown, /## 할 일\n- 금요일까지 결과 공유/);
+  assert.match(markdown, /## 액션 아이템\n- 금요일까지 결과 공유/);
   assert.match(markdown, /## 전사\n- 담당자는 금요일까지 결과를 공유합니다\./);
 });

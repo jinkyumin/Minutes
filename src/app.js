@@ -48,9 +48,8 @@ const elements = {
   audioFileInput: document.querySelector('#audioFileInput'),
   pauseButton: document.querySelector('#pauseButton'),
   endButton: document.querySelector('#endButton'),
+  summarySections: document.querySelector('#summarySections'),
   summaryOverview: document.querySelector('#summaryOverview'),
-  keyPoints: document.querySelector('#keyPoints'),
-  actionItems: document.querySelector('#actionItems'),
   copySummaryButton: document.querySelector('#copySummaryButton'),
   sendNotionButton: document.querySelector('#sendNotionButton'),
   notionSettingsButton: document.querySelector('#notionSettingsButton'),
@@ -538,10 +537,150 @@ function render() {
 }
 
 function renderSummary(summary) {
-  elements.summaryOverview.classList.remove('guidance-text');
-  elements.summaryOverview.textContent = summary.overview || '요약 없음';
-  renderList(elements.keyPoints, summary.keyPoints, '핵심 내용이 없습니다.');
-  renderList(elements.actionItems, summary.actionItems, '감지된 할 일이 없습니다.');
+  elements.summarySections.replaceChildren();
+  getSummarySections(summary).forEach((section) => {
+    elements.summarySections.append(createSummarySection(section));
+  });
+}
+
+function createSummarySection(section) {
+  const wrapper = document.createElement('section');
+  const title = document.createElement('h3');
+  wrapper.className = 'summary-section';
+  wrapper.dataset.sectionKind = getSummarySectionKind(section.title);
+  title.textContent = section.title;
+  wrapper.append(title);
+
+  if (section.type === 'paragraph') {
+    const paragraph = document.createElement('p');
+    paragraph.className = 'summary-overview';
+    paragraph.textContent = section.items[0] || '내용 없음';
+    wrapper.append(paragraph);
+    return wrapper;
+  }
+
+  const structuredRows = parseStructuredRows(section.items);
+
+  if (structuredRows.length > 0) {
+    wrapper.append(createSummaryTable(structuredRows));
+    return wrapper;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'summary-list';
+  renderList(list, section.items, '내용 없음');
+  wrapper.append(list);
+  return wrapper;
+}
+
+function getSummarySectionKind(title = '') {
+  if (title.includes('요약')) return 'overview';
+  if (title.includes('액션')) return 'action';
+  if (title.includes('일정')) return 'schedule';
+  if (title.includes('리스크') || title.includes('쟁점')) return 'risk';
+  if (title.includes('대안') || title.includes('방향')) return 'option';
+  return 'default';
+}
+
+function parseStructuredRows(items) {
+  const rows = normalizeSummaryItems(items).map(parseStructuredItem).filter(Boolean);
+
+  if (rows.length === 0) return [];
+  if (rows.length < Math.ceil(normalizeSummaryItems(items).length * 0.6)) return [];
+
+  const columns = rows.flatMap((row) => Object.keys(row));
+  const uniqueColumns = [...new Set(columns)];
+
+  if (uniqueColumns.length < 2) return [];
+
+  return rows.map((row) => ({ row, columns: uniqueColumns }));
+}
+
+function parseStructuredItem(item) {
+  const segments = String(item)
+    .split(/\s+\|\s+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const row = {};
+
+  if (segments.length > 1) {
+    segments.forEach((segment) => {
+      const pair = splitKeyValue(segment);
+      if (pair) row[pair.key] = pair.value;
+    });
+
+    return Object.keys(row).length >= 2 ? row : null;
+  }
+
+  const pair = splitKeyValue(item);
+  return pair ? { 항목: pair.key, 내용: pair.value } : null;
+}
+
+function splitKeyValue(text) {
+  const match = String(text).match(/^([^:：]{1,24})[:：]\s*(.+)$/u);
+  if (!match) return null;
+
+  return {
+    key: match[1].trim(),
+    value: match[2].trim(),
+  };
+}
+
+function createSummaryTable(structuredRows) {
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const tbody = document.createElement('tbody');
+  const headRow = document.createElement('tr');
+  const columns = structuredRows[0].columns;
+
+  table.className = 'summary-table';
+
+  columns.forEach((column) => {
+    const cell = document.createElement('th');
+    cell.textContent = column;
+    headRow.append(cell);
+  });
+
+  structuredRows.forEach(({ row }) => {
+    const tableRow = document.createElement('tr');
+
+    columns.forEach((column) => {
+      const cell = document.createElement('td');
+      cell.textContent = row[column] || '-';
+      tableRow.append(cell);
+    });
+
+    tbody.append(tableRow);
+  });
+
+  thead.append(headRow);
+  table.append(thead, tbody);
+  return table;
+}
+
+function getSummarySections(summary = {}) {
+  if (Array.isArray(summary.sections) && summary.sections.length > 0) {
+    return summary.sections
+      .map((section) => ({
+        title: String(section?.title || '').trim(),
+        items: normalizeSummaryItems(section?.items),
+        type: section?.type === 'paragraph' ? 'paragraph' : 'list',
+      }))
+      .filter((section) => section.title && section.items.length > 0);
+  }
+
+  return [
+    { title: '회의 요약', items: [summary.overview || '요약 없음'], type: 'paragraph' },
+    { title: '회의 주요내용', items: normalizeSummaryItems(summary.keyPoints), type: 'list' },
+    { title: '액션 아이템', items: normalizeSummaryItems(summary.actionItems), type: 'list' },
+  ];
+}
+
+function normalizeSummaryItems(items) {
+  if (Array.isArray(items)) return items.map(String).map((item) => item.trim()).filter(Boolean);
+  if (typeof items === 'string' && items.trim()) return [items.trim()];
+  return [];
 }
 
 function renderList(list, items, emptyText) {
@@ -667,9 +806,7 @@ function toggleHistory() {
 async function copySummary() {
   const record = state.currentRecord || buildCurrentRecord({
     summary: {
-      overview: elements.summaryOverview.textContent,
-      keyPoints: listItems(elements.keyPoints),
-      actionItems: listItems(elements.actionItems),
+      sections: getRenderedSummarySections(),
     },
   });
 
@@ -736,16 +873,36 @@ async function testNotionConnection() {
 }
 
 function clearSummary() {
-  elements.summaryOverview.classList.add('guidance-text');
-  elements.summaryOverview.textContent = '회의 종료 후 요약이 표시됩니다.';
-  renderList(elements.keyPoints, [], '회의 종료 후 핵심 내용이 표시됩니다.');
-  renderList(elements.actionItems, [], '회의 종료 후 할 일이 표시됩니다.');
+  elements.summarySections.replaceChildren();
+  const wrapper = document.createElement('section');
+  const title = document.createElement('h3');
+  const paragraph = document.createElement('p');
+
+  wrapper.className = 'summary-section';
+  title.textContent = '회의 요약';
+  paragraph.id = 'summaryOverview';
+  paragraph.className = 'summary-overview guidance-text';
+  paragraph.textContent = '회의 종료 후 요약이 표시됩니다.';
+  wrapper.append(title, paragraph);
+  elements.summarySections.append(wrapper);
 }
 
-function listItems(list) {
-  return [...list.querySelectorAll('li')]
-    .map((item) => item.textContent)
-    .filter((text) => text && !text.includes('표시됩니다') && !text.includes('없습니다'));
+function getRenderedSummarySections() {
+  return [...elements.summarySections.querySelectorAll('.summary-section')]
+    .map((section) => {
+      const title = section.querySelector('h3')?.textContent?.trim() || '';
+      const paragraph = section.querySelector('p')?.textContent?.trim();
+      const listItems = [...section.querySelectorAll('li')]
+        .map((item) => item.textContent?.trim())
+        .filter((text) => text && !text.includes('표시됩니다') && !text.includes('없습니다'));
+
+      return {
+        title,
+        items: paragraph && !paragraph.includes('표시됩니다') ? [paragraph] : listItems,
+        type: paragraph ? 'paragraph' : 'list',
+      };
+    })
+    .filter((section) => section.title && section.items.length > 0);
 }
 
 function shortenError(message) {
