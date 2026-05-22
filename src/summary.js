@@ -102,6 +102,11 @@ function formatKeyPoint(sentence) {
 
 function toMemoEnding(text) {
   return String(text || '')
+    .replace(/논의가 진행됨/g, '논의함')
+    .replace(/논의 진행/g, '논의')
+    .replace(/필요성 확인/g, '필요 확인')
+    .replace(/핵심 과제로 부상함/g, '핵심 과제')
+    .replace(/핵심 과제로 부상/g, '핵심 과제')
     .replace(/필요합니다/g, '필요')
     .replace(/예정입니다/g, '예정')
     .replace(/가능성이 있습니다/g, '가능성 있음')
