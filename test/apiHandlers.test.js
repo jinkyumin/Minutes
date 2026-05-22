@@ -125,6 +125,143 @@ test('summarize API calls Gemini when selected', async () => {
   globalThis.fetch = originalFetch;
 });
 
+test('summarize API separates category extraction from minutes writing for long transcripts', async () => {
+  const originalProvider = process.env.LLM_PROVIDER;
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = globalThis.fetch;
+
+  process.env.LLM_PROVIDER = 'gemini';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_MODEL = 'gemini-2.5-flash';
+
+  const prompts = [];
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    const prompt = body.contents[0].parts[0].text;
+    prompts.push(prompt);
+
+    if (prompts.length === 1) {
+      return jsonResponse({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    categories: [
+                      {
+                        title: '현재 운영 구조',
+                        items: ['롯데마트: NICE VAN 사용', '정산: 카드 매출 대사 후 일괄 전달'],
+                      },
+                      {
+                        title: '핵심 쟁점',
+                        items: ['농협VAN: 사용 요구', 'POS: 통신 모듈 변경 필요'],
+                      },
+                    ],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      });
+    }
+
+    return jsonResponse({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  overview: 'NICE VAN 유지 또는 농협VAN 라우팅 가능성 확인 필요',
+                  keyPoints: ['롯데마트는 NICE VAN 사용', '농협VAN 직접 적용 시 통신 모듈 변경 필요'],
+                  actionItems: ['NICE에 라우팅 가능 여부 문의'],
+                  sections: [
+                    {
+                      title: '회의 요약',
+                      items: [
+                        'NICE VAN 유지 또는 농협VAN 라우팅 가능성 확인 필요',
+                        '롯데마트 운영 구조는 NICE VAN 대사 후 일괄 전달 방식',
+                        '농협VAN 직접 적용 시 POS 통신 모듈 변경 필요',
+                        'NICE 미팅을 통한 기술 가능성 우선 확인 필요',
+                      ],
+                      type: 'list',
+                    },
+                    {
+                      title: '현재 운영 구조',
+                      items: [
+                        '항목: 롯데마트 | 내용: NICE VAN 사용',
+                        '항목: 정산 | 내용: 카드 매출 대사 후 일괄 전달',
+                      ],
+                      type: 'list',
+                    },
+                    {
+                      title: '핵심 쟁점 및 리스크',
+                      items: [
+                        '항목: 농협VAN | 내용: POS 통신 모듈 변경 필요',
+                        '항목: 단말기 | 내용: 리더기 교체 가능성 있음',
+                      ],
+                      type: 'list',
+                    },
+                    {
+                      title: '검토 대안',
+                      items: [
+                        '대안: NICE 중계 라우팅 | 내용: 농협 거래만 농협VAN 라우팅 | 판단: 우선 검토안',
+                        '대안: 농협VAN 직접 적용 | 내용: POS 통신 모듈 변경 | 판단: 최후 대안',
+                      ],
+                      type: 'list',
+                    },
+                    {
+                      title: '액션 아이템',
+                      items: [
+                        '담당: 유통관리팀/IT | 액션: NICE에 농협VAN 라우팅 가능 여부 문의 | 기한: NICE 미팅 시',
+                        '담당: 유통관리팀 | 액션: 농협VAN 사용 필수 조건 여부 재확인 | 기한: 농협 미팅 전',
+                      ],
+                      type: 'list',
+                    },
+                    {
+                      title: '주요 일정',
+                      items: [
+                        '일정: 4월 10일경 | 내용: MOU 체결 예정',
+                        '일정: 8월 | 내용: 특정매입 계약 구조 적용 가능성',
+                      ],
+                      type: 'list',
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+  };
+
+  const response = createResponse();
+  await summarizeHandler(
+    createRequest('POST', {
+      transcript: '농협 하나로마트 VAN 협의 '.repeat(120),
+      note: 'NICE VAN과 농협VAN 라우팅 가능성 확인 필요',
+    }),
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  const summary = JSON.parse(response.body);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0], /1차 카테고리/);
+  assert.match(prompts[1], /1차 카테고리 추출 결과/);
+  assert.equal(summary.sections.length, 6);
+  assert.equal(summary.sections[3].title, '검토 대안');
+
+  restoreEnv('LLM_PROVIDER', originalProvider);
+  restoreEnv('GEMINI_API_KEY', originalKey);
+  restoreEnv('GEMINI_MODEL', originalModel);
+  globalThis.fetch = originalFetch;
+});
+
 test('summarize API retries Gemini 503 with fallback model', async () => {
   const originalProvider = process.env.LLM_PROVIDER;
   const originalKey = process.env.GEMINI_API_KEY;
@@ -183,9 +320,10 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
       { title: '회의 주요내용', items: ['fallback key point'], type: 'list' },
     ],
   });
-  assert.equal(urls.length, 2);
+  assert.equal(urls.length, 3);
   assert.match(urls[0], /gemini-2\.5-flash/);
   assert.match(urls[1], /gemini-2\.5-flash-lite/);
+  assert.match(urls[2], /gemini-2\.5-flash-lite/);
 
   restoreEnv('LLM_PROVIDER', originalProvider);
   restoreEnv('GEMINI_API_KEY', originalKey);

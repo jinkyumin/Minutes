@@ -30,6 +30,17 @@ async function summarizeWithOpenAI(body, transcript, note) {
     throw new Error('OPENAI_API_KEY is not configured.');
   }
 
+  const categories = await extractCategoriesWithOpenAI(body, transcript, note);
+  const summary = await writeMinutesWithOpenAI(body, transcript, note, categories);
+
+  if (isWeakSummary(summary, transcript, note)) {
+    return retryOpenAiSummary(body, transcript, note, summary, categories);
+  }
+
+  return summary;
+}
+
+async function extractCategoriesWithOpenAI(body, transcript, note) {
   const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -41,54 +52,20 @@ async function summarizeWithOpenAI(body, transcript, note) {
       text: {
         format: {
           type: 'json_schema',
-          name: 'meeting_summary',
+          name: 'meeting_categories',
           strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              overview: { type: 'string' },
-              keyPoints: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              actionItems: {
-                type: 'array',
-                items: { type: 'string' },
-              },
-              sections: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  properties: {
-                    title: { type: 'string' },
-                    items: {
-                      type: 'array',
-                      items: { type: 'string' },
-                    },
-                    type: {
-                      type: 'string',
-                      enum: ['paragraph', 'list'],
-                    },
-                  },
-                  required: ['title', 'items', 'type'],
-                },
-              },
-            },
-            required: ['overview', 'keyPoints', 'actionItems', 'sections'],
-          },
+          schema: categoryJsonSchema(),
         },
       },
       input: [
         {
           role: 'system',
           content:
-            'You write concise Korean business meeting minutes. Return only strict JSON with overview, keyPoints, actionItems, and sections.',
+            'You extract categorized facts from Korean meeting transcripts. Return only strict JSON with categories.',
         },
         {
           role: 'user',
-          content: buildPrompt(body, transcript, note),
+          content: buildCategorizationPrompt(body, transcript, note),
         },
       ],
     }),
@@ -99,16 +76,10 @@ async function summarizeWithOpenAI(body, transcript, note) {
   }
 
   const data = await openAiResponse.json();
-  const summary = normalizeSummary(parseOpenAiOutput(data));
-
-  if (isWeakSummary(summary, transcript, note)) {
-    return retryOpenAiSummary(body, transcript, note, summary);
-  }
-
-  return summary;
+  return normalizeCategories(parseOpenAiOutput(data));
 }
 
-async function retryOpenAiSummary(body, transcript, note, previousSummary) {
+async function writeMinutesWithOpenAI(body, transcript, note, categories, options = {}) {
   const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -133,7 +104,7 @@ async function retryOpenAiSummary(body, transcript, note, previousSummary) {
         },
         {
           role: 'user',
-          content: buildPrompt(body, transcript, note, { previousSummary, retry: true }),
+          content: buildMinutesPrompt(body, transcript, note, categories, options),
         },
       ],
     }),
@@ -147,6 +118,10 @@ async function retryOpenAiSummary(body, transcript, note, previousSummary) {
   return normalizeSummary(parseOpenAiOutput(data));
 }
 
+async function retryOpenAiSummary(body, transcript, note, previousSummary, categories) {
+  return writeMinutesWithOpenAI(body, transcript, note, categories, { previousSummary, retry: true });
+}
+
 async function summarizeWithGemini(body, transcript, note) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not configured.');
@@ -154,41 +129,38 @@ async function summarizeWithGemini(body, transcript, note) {
 
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite';
-  const geminiResponse = await requestGeminiSummary(model, body, transcript, note);
+  const categoryResponse = await requestGeminiCategories(model, body, transcript, note);
 
-  if (!geminiResponse.ok && geminiResponse.status === 503 && fallbackModel !== model) {
-    const fallbackResponse = await requestGeminiSummary(fallbackModel, body, transcript, note);
+  if (!categoryResponse.ok && categoryResponse.status === 503 && fallbackModel !== model) {
+    const fallbackCategoryResponse = await requestGeminiCategories(fallbackModel, body, transcript, note);
 
-    if (!fallbackResponse.ok) {
-      throw new Error(await fallbackResponse.text());
+    if (!fallbackCategoryResponse.ok) {
+      throw new Error(await fallbackCategoryResponse.text());
     }
 
-    const fallbackData = await fallbackResponse.json();
-    const fallbackSummary = parseGeminiSummary(fallbackData);
+    const categories = parseGeminiCategories(await fallbackCategoryResponse.json());
+    const fallbackSummary = await writeMinutesWithGemini(fallbackModel, body, transcript, note, categories);
     return isWeakSummary(fallbackSummary, transcript, note)
-      ? retryGeminiSummary(fallbackModel, body, transcript, note, fallbackSummary)
+      ? retryGeminiSummary(fallbackModel, body, transcript, note, fallbackSummary, categories)
       : fallbackSummary;
   }
 
-  if (!geminiResponse.ok) {
-    throw new Error(await geminiResponse.text());
+  if (!categoryResponse.ok) {
+    throw new Error(await categoryResponse.text());
   }
 
-  const data = await geminiResponse.json();
-  const summary = parseGeminiSummary(data);
+  const categories = parseGeminiCategories(await categoryResponse.json());
+  const summary = await writeMinutesWithGemini(model, body, transcript, note, categories);
 
   if (isWeakSummary(summary, transcript, note)) {
-    return retryGeminiSummary(model, body, transcript, note, summary);
+    return retryGeminiSummary(model, body, transcript, note, summary, categories);
   }
 
   return summary;
 }
 
-async function retryGeminiSummary(model, body, transcript, note, previousSummary) {
-  const response = await requestGeminiSummary(model, body, transcript, note, {
-    previousSummary,
-    retry: true,
-  });
+async function writeMinutesWithGemini(model, body, transcript, note, categories, options = {}) {
+  const response = await requestGeminiSummary(model, body, transcript, note, categories, options);
 
   if (!response.ok) {
     throw new Error(await response.text());
@@ -197,7 +169,60 @@ async function retryGeminiSummary(model, body, transcript, note, previousSummary
   return parseGeminiSummary(await response.json());
 }
 
-async function requestGeminiSummary(model, body, transcript, note, options = {}) {
+async function retryGeminiSummary(model, body, transcript, note, previousSummary, categories) {
+  return writeMinutesWithGemini(model, body, transcript, note, categories, {
+    previousSummary,
+    retry: true,
+  });
+}
+
+async function requestGeminiCategories(model, body, transcript, note) {
+  return fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        generationConfig: {
+          temperature: 0,
+          topP: 0.8,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              categories: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    title: { type: 'STRING' },
+                    items: {
+                      type: 'ARRAY',
+                      items: { type: 'STRING' },
+                    },
+                  },
+                  required: ['title', 'items'],
+                },
+              },
+            },
+            required: ['categories'],
+          },
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: buildCategorizationPrompt(body, transcript, note) }],
+          },
+        ],
+      }),
+    },
+  );
+}
+
+async function requestGeminiSummary(model, body, transcript, note, categories, options = {}) {
   return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -245,7 +270,7 @@ async function requestGeminiSummary(model, body, transcript, note, options = {})
         contents: [
           {
             role: 'user',
-            parts: [{ text: buildPrompt(body, transcript, note, options) }],
+            parts: [{ text: buildMinutesPrompt(body, transcript, note, categories, options) }],
           },
         ],
       }),
@@ -253,7 +278,33 @@ async function requestGeminiSummary(model, body, transcript, note, options = {})
   );
 }
 
-function buildPrompt(body, transcript, note, options = {}) {
+function buildCategorizationPrompt(body, transcript, note) {
+  return [
+    '1차 카테고리 추출 단계입니다.',
+    '다음 한국어 회의 전사와 Note에서 회의록 작성에 필요한 사실을 먼저 핵심 카테고리로 그룹핑하세요.',
+    '반드시 JSON만 반환하세요.',
+    'JSON schema: {"categories":[{"title":"string","items":["string"]}]}',
+    '',
+    '카테고리 작성 규칙:',
+    '- 전사문에 실제로 등장한 내용만 사용하세요.',
+    '- 발언자, 말더듬, 반복 표현은 제거하세요.',
+    '- 업체명, 시스템명, 계약 형태, 일정, 리스크 원인을 구체 명칭으로 보존하세요.',
+    '- 시스템, 계약, 정산, 운영, 리스크, 대안이 언급되면 각각 별도 카테고리로 분리하세요.',
+    '- 가능한 카테고리 예시는 "현재 운영 구조", "요구/제안 구조", "핵심 쟁점", "기술 리스크", "운영/정산 리스크", "검토 대안", "액션 아이템", "주요 일정", "참고 구조"입니다.',
+    '- 각 카테고리는 2~8개 항목으로 구체적으로 작성하세요.',
+    '- 추상 요약 문장 금지. "NICE VAN 사용", "농협VAN 라우팅 가능 여부 확인 필요"처럼 명확한 항목으로 작성하세요.',
+    '',
+    `회의 제목: ${body.title || '미입력'}`,
+    `회의 일시: ${body.meetingDateTime || '미입력'}`,
+    `참석자: ${body.attendees || '미입력'}`,
+    '',
+    `Note:\n${note || '없음'}`,
+    '',
+    `전사:\n${transcript || '없음'}`,
+  ].join('\n');
+}
+
+function buildMinutesPrompt(body, transcript, note, categories, options = {}) {
   return [
     ...(options.retry
       ? [
@@ -264,7 +315,8 @@ function buildPrompt(body, transcript, note, options = {}) {
         ]
       : []),
     '다음 한국어 회의 내용을 업무용 회의록 문서로 정리하세요.',
-    '작업 순서: 1) 전사 내용을 먼저 핵심 카테고리로 그룹핑 2) 그룹핑 결과를 바탕으로 회의록 작성.',
+    '2차 회의록 작성 단계입니다.',
+    '아래 1차 카테고리 추출 결과를 우선 근거로 사용하고, 필요 시 원문 전사를 보조 근거로 사용하세요.',
     '반드시 JSON만 반환하세요.',
     'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
     '',
@@ -313,6 +365,8 @@ function buildPrompt(body, transcript, note, options = {}) {
     '- 예: "농협VAN 사용을 요구했다" 금지. "농협VAN 사용 요구" 또는 "농협VAN 사용 요구 확인" 권장.',
     '- 예: "리스크가 있다" 금지. "리스크 있음" 권장.',
     '',
+    `1차 카테고리 추출 결과:\n${formatCategoriesForPrompt(categories)}`,
+    '',
     `회의 제목: ${body.title || '미입력'}`,
     `회의 일시: ${body.meetingDateTime || '미입력'}`,
     `참석자: ${body.attendees || '미입력'}`,
@@ -321,6 +375,21 @@ function buildPrompt(body, transcript, note, options = {}) {
     '',
     `전사:\n${transcript || '없음'}`,
   ].join('\n');
+}
+
+function formatCategoriesForPrompt(categories) {
+  const normalizedCategories = normalizeCategories(categories).categories;
+
+  if (normalizedCategories.length === 0) {
+    return '- 추출된 카테고리 없음';
+  }
+
+  return normalizedCategories
+    .map((category) => [
+      `## ${category.title}`,
+      ...category.items.map((item) => `- ${item}`),
+    ].join('\n'))
+    .join('\n\n');
 }
 
 function summaryJsonSchema() {
@@ -361,6 +430,31 @@ function summaryJsonSchema() {
   };
 }
 
+function categoryJsonSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      categories: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            title: { type: 'string' },
+            items: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+          required: ['title', 'items'],
+        },
+      },
+    },
+    required: ['categories'],
+  };
+}
+
 function resolveOpenAiModel(model) {
   if (!model || model === 'chat-latest') {
     return 'gpt-5.2-chat-latest';
@@ -394,6 +488,31 @@ function parseGeminiSummary(data) {
   } catch {
     return normalizeSummary(parseLooseSummary(text));
   }
+}
+
+function parseGeminiCategories(data) {
+  const text = parseGeminiOutput(data);
+
+  try {
+    return normalizeCategories(parseJsonObject(text));
+  } catch {
+    return normalizeCategories({});
+  }
+}
+
+function normalizeCategories(data) {
+  return {
+    categories: Array.isArray(data?.categories)
+      ? data.categories
+        .map((category) => ({
+          title: cleanSummaryText(category?.title),
+          items: Array.isArray(category?.items)
+            ? category.items.map(cleanSummaryText).filter(Boolean)
+            : [],
+        }))
+        .filter((category) => category.title && category.items.length > 0)
+      : [],
+  };
 }
 
 function parseJsonObject(text) {
