@@ -30,6 +30,7 @@ export function summarizeMeeting(entries) {
 
   if (sentences.length === 0) {
     return {
+      title: '',
       overview: '전사된 회의 내용이 없습니다.',
       keyPoints: [],
       actionItems: [],
@@ -57,6 +58,7 @@ export function summarizeMeeting(entries) {
   const normalizedKeyPoints = keyPoints.length > 0 ? keyPoints.map(toMemoEnding) : fallbackKeyPoints;
 
   return {
+    title: createSummaryTitle(normalizedKeyPoints, overview),
     overview,
     keyPoints: normalizedKeyPoints,
     actionItems,
@@ -66,6 +68,14 @@ export function summarizeMeeting(entries) {
       { title: '액션 아이템', items: actionItems, type: 'list' },
     ].filter((section) => section.items.length > 0),
   };
+}
+
+function createSummaryTitle(keyPoints, overview) {
+  const source = keyPoints[0] || overview || '회의록';
+  return source
+    .replace(/[.!?。！？]$/u, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 24);
 }
 
 function normalizeEntries(entries) {

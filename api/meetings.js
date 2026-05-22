@@ -130,6 +130,7 @@ function normalizeSummary(summary = {}) {
   const sections = normalizeSummarySections(summary);
 
   return {
+    title: summary.title || '',
     overview: summary.overview || '',
     keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints : [],
     actionItems: Array.isArray(summary.actionItems) ? summary.actionItems : [],

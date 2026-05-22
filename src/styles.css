@@ -295,7 +295,7 @@ label {
 }
 
 .result-actions {
-  grid-template-columns: 1fr 1fr 44px;
+  grid-template-columns: 1fr 1fr 1fr 44px;
   margin: 18px 0 0;
 }
 

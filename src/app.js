@@ -51,6 +51,7 @@ const elements = {
   summarySections: document.querySelector('#summarySections'),
   summaryOverview: document.querySelector('#summaryOverview'),
   copySummaryButton: document.querySelector('#copySummaryButton'),
+  downloadPdfButton: document.querySelector('#downloadPdfButton'),
   sendNotionButton: document.querySelector('#sendNotionButton'),
   notionSettingsButton: document.querySelector('#notionSettingsButton'),
   notionDialog: document.querySelector('#notionDialog'),
@@ -90,6 +91,7 @@ function bindEvents() {
   elements.pauseButton.addEventListener('click', togglePause);
   elements.endButton.addEventListener('click', endMeeting);
   elements.copySummaryButton.addEventListener('click', copySummary);
+  elements.downloadPdfButton.addEventListener('click', downloadSummaryPdf);
   elements.sendNotionButton.addEventListener('click', sendCurrentRecordToNotion);
   elements.notionSettingsButton.addEventListener('click', openNotionSettings);
   elements.saveNotionSettingsButton.addEventListener('click', saveNotionSettings);
@@ -223,7 +225,11 @@ async function summarizeAndSaveCurrentMeeting() {
     summary: summarizeMeeting(buildSummaryEntries()),
   });
   const { summary, source, error } = await summarizeWithLlm(draftRecord);
-  const savedRecord = await meetingStore.saveRecord({ ...draftRecord, summary });
+  const title = draftRecord.title || createAutoMeetingTitle(summary);
+  if (!draftRecord.title && title) {
+    elements.meetingTitle.value = title;
+  }
+  const savedRecord = await meetingStore.saveRecord({ ...draftRecord, title, summary });
 
   state.currentRecord = savedRecord;
   state.selectedRecordId = savedRecord.id;
@@ -677,6 +683,21 @@ function getSummarySections(summary = {}) {
   ];
 }
 
+function createAutoMeetingTitle(summary = {}) {
+  const explicitTitle = String(summary.title || '').trim();
+  if (explicitTitle) return explicitTitle.slice(0, 32);
+
+  const sectionTitle = normalizeSummaryItems(summary.sections?.[0]?.items)[0];
+  const fallback = sectionTitle || summary.overview || normalizeSummaryItems(summary.keyPoints)[0] || '';
+
+  return String(fallback)
+    .replace(/[.!?。！？]$/u, '')
+    .replace(/^(회의\s*)?요약[:：]\s*/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 32);
+}
+
 function normalizeSummaryItems(items) {
   if (Array.isArray(items)) return items.map(String).map((item) => item.trim()).filter(Boolean);
   if (typeof items === 'string' && items.trim()) return [items.trim()];
@@ -812,6 +833,105 @@ async function copySummary() {
 
   await navigator.clipboard.writeText(formatMeetingMarkdown(record));
   setStatus('회의록 복사 완료');
+}
+
+function downloadSummaryPdf() {
+  const record = state.currentRecord || buildCurrentRecord({
+    summary: {
+      sections: getRenderedSummarySections(),
+    },
+  });
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    setStatus('PDF 창 열기 실패');
+    return;
+  }
+
+  printWindow.document.write(createPrintableMeetingHtml(record));
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.setTimeout(() => {
+    printWindow.print();
+  }, 300);
+  setStatus('PDF 저장 창 열림');
+}
+
+function createPrintableMeetingHtml(record) {
+  const sections = getSummarySections(record.summary || {});
+  const meetingTitle = escapeHtml(record.title || createAutoMeetingTitle(record.summary) || '회의록');
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>${meetingTitle}</title>
+  <style>
+    body { margin: 0; color: #17242b; font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; line-height: 1.62; }
+    main { max-width: 920px; margin: 0 auto; padding: 32px; }
+    header { border-bottom: 3px solid #1f333d; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; color: #52636f; font-size: 13px; }
+    section { break-inside: avoid; border: 1px solid #dce5ea; border-radius: 8px; padding: 16px; margin: 14px 0; }
+    h2 { margin: 0 0 10px; font-size: 18px; color: #142630; }
+    p { margin: 0; font-weight: 650; }
+    ul { margin: 0; padding-left: 20px; }
+    li + li { margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid #dbe4ea; padding: 8px; vertical-align: top; }
+    th { background: #edf4f7; text-align: left; }
+    @page { margin: 16mm; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>${meetingTitle}</h1>
+      <div class="meta">
+        <span>회의 일시: ${escapeHtml(record.meetingDateTime || '미입력')}</span>
+        <span>참석자: ${escapeHtml(record.attendees || '미입력')}</span>
+        <span>생성일: ${escapeHtml(formatPdfDate(new Date()))}</span>
+      </div>
+    </header>
+    ${sections.map(createPrintableSectionHtml).join('')}
+  </main>
+</body>
+</html>`;
+}
+
+function createPrintableSectionHtml(section) {
+  const structuredRows = parseStructuredRows(section.items);
+  const content = structuredRows.length > 0
+    ? createPrintableTableHtml(structuredRows)
+    : section.type === 'paragraph'
+      ? `<p>${escapeHtml(section.items[0] || '내용 없음')}</p>`
+      : `<ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+
+  return `<section><h2>${escapeHtml(section.title)}</h2>${content}</section>`;
+}
+
+function createPrintableTableHtml(structuredRows) {
+  const columns = structuredRows[0].columns;
+  return `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${structuredRows.map(({ row }) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column] || '-')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatPdfDate(date) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 async function sendCurrentRecordToNotion() {

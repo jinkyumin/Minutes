@@ -19,6 +19,7 @@ test('summarize API calls OpenAI and returns normalized summary', async () => {
     return jsonResponse({
       output_text: JSON.stringify({
         overview: '회의 개요입니다.',
+        title: '프로젝트 일정 회의',
         keyPoints: ['핵심 1'],
         actionItems: ['할 일 1'],
       }),
@@ -38,6 +39,7 @@ test('summarize API calls OpenAI and returns normalized summary', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), {
     overview: '회의 개요임.',
+    title: '프로젝트 일정 회의',
     keyPoints: ['핵심 1'],
     actionItems: ['할 일 1'],
     sections: [
@@ -77,6 +79,7 @@ test('summarize API calls Gemini when selected', async () => {
               {
                 text: JSON.stringify({
                   overview: 'Gemini 회의 개요입니다.',
+                  title: '예산 확인 회의',
                   keyPoints: ['Gemini 핵심 1'],
                   actionItems: ['Gemini 할 일 1'],
                 }),
@@ -101,6 +104,7 @@ test('summarize API calls Gemini when selected', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), {
     overview: 'Gemini 회의 개요임.',
+    title: '예산 확인 회의',
     keyPoints: ['Gemini 핵심 1'],
     actionItems: ['Gemini 할 일 1'],
     sections: [
@@ -176,6 +180,7 @@ test('summarize API separates category extraction from minutes writing for long 
               {
                 text: JSON.stringify({
                   overview: 'NICE VAN 유지 또는 농협VAN 라우팅 가능성 확인 필요',
+                  title: '농협 하나로마트 VAN 협의',
                   keyPoints: ['롯데마트는 NICE VAN 사용', '농협VAN 직접 적용 시 통신 모듈 변경 필요'],
                   actionItems: ['NICE에 라우팅 가능 여부 문의'],
                   sections: [
@@ -296,6 +301,7 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
               {
                 text: JSON.stringify({
                   overview: 'fallback summary',
+                  title: 'fallback title',
                   keyPoints: ['fallback key point'],
                   actionItems: [],
                 }),
@@ -313,6 +319,7 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), {
     overview: 'fallback summary',
+    title: 'fallback title',
     keyPoints: ['fallback key point'],
     actionItems: [],
     sections: [
@@ -348,7 +355,7 @@ test('summarize API repairs Gemini JSON with raw multiline strings', async () =>
         content: {
           parts: [
             {
-              text: '{\n"overview": "첫 줄\n둘째 줄",\n"keyPoints": ["핵심"],\n"actionItems": []\n}',
+              text: '{\n"overview": "첫 줄\n둘째 줄",\n"title": "멀티라인 회의",\n"keyPoints": ["핵심"],\n"actionItems": []\n}',
             },
           ],
         },
@@ -368,6 +375,7 @@ test('summarize API repairs Gemini JSON with raw multiline strings', async () =>
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), {
     overview: '첫 줄\n둘째 줄',
+    title: '멀티라인 회의',
     keyPoints: ['핵심'],
     actionItems: [],
     sections: [
@@ -398,7 +406,7 @@ test('summarize API salvages malformed Gemini JSON instead of failing', async ()
         content: {
           parts: [
             {
-              text: '{"overview":"SAP "Public Cloud" 도입 방향을 논의했습니다.\\n재무 통합과 공시 대응이 핵심입니다.","keyPoints":["퍼블릭과 프라이빗 비교","DDA 재검토 필요"],"actionItems":["자료 공유"]}',
+              text: '{"overview":"SAP "Public Cloud" 도입 방향을 논의했습니다.\\n재무 통합과 공시 대응이 핵심입니다.","title":"SAP Public Cloud 검토","keyPoints":["퍼블릭과 프라이빗 비교","DDA 재검토 필요"],"actionItems":["자료 공유"]}',
             },
           ],
         },
@@ -417,6 +425,7 @@ test('summarize API salvages malformed Gemini JSON instead of failing', async ()
   assert.equal(response.statusCode, 200);
   assert.deepEqual(JSON.parse(response.body), {
     overview: 'SAP "Public Cloud" 도입 방향을 논의함.\n재무 통합과 공시 대응이 핵심임.',
+    title: 'SAP Public Cloud 검토',
     keyPoints: ['퍼블릭과 프라이빗 비교', 'DDA 재검토 필요'],
     actionItems: ['자료 공유'],
     sections: [
@@ -452,7 +461,7 @@ test('summarize API does not expose raw parenthesized JSON fragments', async () 
         content: {
           parts: [
             {
-              text: '({"overview":"10월 매출 목표 초과와 연간 손익 목표 미달 상황을 논의했습니다.","keyPoints":["10월 목표 초과","연간 손익 미달"],"actionItems":["11월과 12월 총력전 진행"]})',
+              text: '({"overview":"10월 매출 목표 초과와 연간 손익 목표 미달 상황을 논의했습니다.","title":"월례 손익 회의","keyPoints":["10월 목표 초과","연간 손익 미달"],"actionItems":["11월과 12월 총력전 진행"]})',
             },
           ],
         },
@@ -466,6 +475,7 @@ test('summarize API does not expose raw parenthesized JSON fragments', async () 
   assert.equal(response.statusCode, 200);
   const summary = JSON.parse(response.body);
   assert.equal(summary.overview, '10월 매출 목표 초과와 연간 손익 목표 미달 상황을 논의함.');
+  assert.equal(summary.title, '월례 손익 회의');
   assert.ok(!summary.overview.includes('overview'));
   assert.ok(!summary.overview.includes('{'));
 
@@ -552,7 +562,7 @@ test('meetings API lists records from Supabase', async () => {
         attendees: 'A, B',
         note: 'memo',
         transcript_entries: [{ text: 'hello' }],
-      summary: { overview: 'summary', keyPoints: ['point'], actionItems: [], sections: [] },
+        summary: { overview: 'summary', title: '', keyPoints: ['point'], actionItems: [], sections: [] },
         saved_at: '2026-05-19T00:00:00.000Z',
       },
     ]);
@@ -571,7 +581,7 @@ test('meetings API lists records from Supabase', async () => {
       note: 'memo',
       notes: 'memo',
       transcriptEntries: [{ text: 'hello' }],
-      summary: { overview: 'summary', keyPoints: ['point'], actionItems: [], sections: [] },
+      summary: { overview: 'summary', title: '', keyPoints: ['point'], actionItems: [], sections: [] },
       savedAt: '2026-05-19T00:00:00.000Z',
     },
   ]);
@@ -632,7 +642,7 @@ test('meetings API saves records to Supabase', async () => {
     attendees: '',
     note: '',
     transcript_entries: [],
-    summary: { overview: 'done', keyPoints: [], actionItems: [], sections: [] },
+    summary: { overview: 'done', title: '', keyPoints: [], actionItems: [], sections: [] },
   });
 
   restoreEnv('SUPABASE_URL', originalUrl);

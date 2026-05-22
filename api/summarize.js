@@ -239,6 +239,7 @@ async function requestGeminiSummary(model, body, transcript, note, categories, o
           responseSchema: {
             type: 'OBJECT',
             properties: {
+              title: { type: 'STRING' },
               overview: { type: 'STRING' },
               keyPoints: {
                 type: 'ARRAY',
@@ -264,7 +265,7 @@ async function requestGeminiSummary(model, body, transcript, note, categories, o
                 },
               },
             },
-            required: ['overview', 'keyPoints', 'actionItems', 'sections'],
+            required: ['title', 'overview', 'keyPoints', 'actionItems', 'sections'],
           },
         },
         contents: [
@@ -318,9 +319,11 @@ function buildMinutesPrompt(body, transcript, note, categories, options = {}) {
     '2차 회의록 작성 단계입니다.',
     '아래 1차 카테고리 추출 결과를 우선 근거로 사용하고, 필요 시 원문 전사를 보조 근거로 사용하세요.',
     '반드시 JSON만 반환하세요.',
-    'JSON schema: {"overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
+    'JSON schema: {"title":"string","overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
     '',
     'sections 작성 규칙:',
+    '- title은 회의 내용을 바탕으로 20자 내외의 간결한 회의록 제목으로 작성하세요.',
+    '- title은 사용자가 제목을 입력하지 않은 경우 앱에서 회의록 제목으로 사용됩니다.',
     '- sections는 화면에 그대로 표시되는 최종 회의록입니다. overview/keyPoints/actionItems보다 sections 품질을 최우선으로 작성하세요.',
     '- 첫 번째 섹션은 반드시 "회의 요약"이고 type은 반드시 "list"입니다.',
     '- "회의 요약"은 긴 문단 금지. 핵심 결론, 현재 구조, 쟁점, 우선 검토 방향을 4~6개 항목으로 작성하세요.',
@@ -398,6 +401,7 @@ function summaryJsonSchema() {
     additionalProperties: false,
     properties: {
       overview: { type: 'string' },
+      title: { type: 'string' },
       keyPoints: {
         type: 'array',
         items: { type: 'string' },
@@ -426,7 +430,7 @@ function summaryJsonSchema() {
         },
       },
     },
-    required: ['overview', 'keyPoints', 'actionItems', 'sections'],
+    required: ['title', 'overview', 'keyPoints', 'actionItems', 'sections'],
   };
 }
 
@@ -529,6 +533,7 @@ function parseLooseSummary(text) {
   const cleanedText = cleanJsonLikeText(text);
 
   return {
+    title: cleanSummaryText(extractLooseString(cleanedText, 'title')),
     overview: cleanSummaryText(extractLooseString(cleanedText, 'overview') || extractFirstMeaningfulSentence(cleanedText)),
     keyPoints: extractLooseArray(cleanedText, 'keyPoints'),
     actionItems: extractLooseArray(cleanedText, 'actionItems'),
@@ -556,7 +561,10 @@ function cleanJsonLikeText(text) {
 }
 
 function extractLooseString(text, fieldName) {
-  const match = text.match(new RegExp(`"${fieldName}"\\s*:\\s*"([\\s\\S]*?)"\\s*,\\s*"(keyPoints|actionItems)"\\s*:`));
+  const nextFields = fieldName === 'overview'
+    ? 'title|keyPoints|actionItems|sections'
+    : 'overview|keyPoints|actionItems|sections';
+  const match = text.match(new RegExp(`"${fieldName}"\\s*:\\s*"([\\s\\S]*?)"\\s*,\\s*"(${nextFields})"\\s*:`));
 
   return match?.[1]
     ?.replace(/\\"/g, '"')
@@ -620,6 +628,7 @@ function normalizeSummary(summary) {
   const sections = normalizeSections(summary);
 
   return {
+    title: cleanSummaryText(summary.title),
     overview: cleanSummaryText(summary.overview),
     keyPoints: Array.isArray(summary.keyPoints) ? summary.keyPoints.map(cleanSummaryText).filter(Boolean) : [],
     actionItems: Array.isArray(summary.actionItems) ? summary.actionItems.map(cleanSummaryText).filter(Boolean) : [],
