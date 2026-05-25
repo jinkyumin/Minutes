@@ -841,6 +841,7 @@ function downloadSummaryPdf() {
       sections: getRenderedSummarySections(),
     },
   });
+  const summaryForPrint = cloneSummaryForPrint();
 
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
@@ -848,7 +849,7 @@ function downloadSummaryPdf() {
     return;
   }
 
-  printWindow.document.write(createPrintableMeetingHtml(record));
+  printWindow.document.write(createPrintableMeetingHtml(record, summaryForPrint.outerHTML));
   printWindow.document.close();
   printWindow.focus();
   printWindow.setTimeout(() => {
@@ -857,8 +858,14 @@ function downloadSummaryPdf() {
   setStatus('PDF 저장 창 열림');
 }
 
-function createPrintableMeetingHtml(record) {
-  const sections = getSummarySections(record.summary || {});
+function cloneSummaryForPrint() {
+  const clone = elements.summarySections.cloneNode(true);
+  clone.id = 'printSummarySections';
+  clone.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+  return clone;
+}
+
+function createPrintableMeetingHtml(record, summaryHtml) {
   const meetingTitle = escapeHtml(record.title || createAutoMeetingTitle(record.summary) || '회의록');
 
   return `<!doctype html>
@@ -866,22 +873,7 @@ function createPrintableMeetingHtml(record) {
 <head>
   <meta charset="utf-8">
   <title>${meetingTitle}</title>
-  <style>
-    body { margin: 0; color: #17242b; font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; line-height: 1.62; }
-    main { max-width: 920px; margin: 0 auto; padding: 32px; }
-    header { border-bottom: 3px solid #1f333d; padding-bottom: 18px; margin-bottom: 22px; }
-    h1 { margin: 0 0 10px; font-size: 28px; }
-    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; color: #52636f; font-size: 13px; }
-    section { break-inside: avoid; border: 1px solid #dce5ea; border-radius: 8px; padding: 16px; margin: 14px 0; }
-    h2 { margin: 0 0 10px; font-size: 18px; color: #142630; }
-    p { margin: 0; font-weight: 650; }
-    ul { margin: 0; padding-left: 20px; }
-    li + li { margin-top: 6px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border: 1px solid #dbe4ea; padding: 8px; vertical-align: top; }
-    th { background: #edf4f7; text-align: left; }
-    @page { margin: 16mm; }
-  </style>
+  <style>${createPrintableStyle()}</style>
 </head>
 <body>
   <main>
@@ -893,26 +885,44 @@ function createPrintableMeetingHtml(record) {
         <span>생성일: ${escapeHtml(formatPdfDate(new Date()))}</span>
       </div>
     </header>
-    ${sections.map(createPrintableSectionHtml).join('')}
+    <article class="print-result">${summaryHtml}</article>
   </main>
 </body>
 </html>`;
 }
 
-function createPrintableSectionHtml(section) {
-  const structuredRows = parseStructuredRows(section.items);
-  const content = structuredRows.length > 0
-    ? createPrintableTableHtml(structuredRows)
-    : section.type === 'paragraph'
-      ? `<p>${escapeHtml(section.items[0] || '내용 없음')}</p>`
-      : `<ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
-
-  return `<section><h2>${escapeHtml(section.title)}</h2>${content}</section>`;
-}
-
-function createPrintableTableHtml(structuredRows) {
-  const columns = structuredRows[0].columns;
-  return `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead><tbody>${structuredRows.map(({ row }) => `<tr>${columns.map((column) => `<td>${escapeHtml(row[column] || '-')}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+function createPrintableStyle() {
+  return `
+    body { margin: 0; color: #17242b; background: #fff; font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; line-height: 1.62; }
+    main { max-width: 920px; margin: 0 auto; padding: 32px; }
+    header { border-bottom: 3px solid #1f333d; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 10px; font-size: 28px; letter-spacing: 0; }
+    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; color: #52636f; font-size: 13px; }
+    .print-result { display: block; }
+    .summary-sections { display: grid; gap: 14px; }
+    .summary-section { break-inside: avoid; border: 1px solid #dfe7ec; border-radius: 10px; padding: 15px; background: #fbfdfe; }
+    .summary-section[data-section-kind='overview'] { border-color: #c8e3eb; background: #f0f8fa; box-shadow: inset 4px 0 0 #1f6f8b; }
+    .summary-section[data-section-kind='risk'] { border-color: #efd0d0; background: #fff8f8; box-shadow: inset 4px 0 0 #c66a6a; }
+    .summary-section[data-section-kind='action'],
+    .summary-section[data-section-kind='schedule'] { border-color: #d9e2ec; background: #f7fafc; }
+    .summary-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 1rem; color: #142630; font-weight: 950; }
+    .summary-section h3::before { content: ''; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 999px; background: #1f6f8b; }
+    .summary-section[data-section-kind='risk'] h3::before { background: #c66a6a; }
+    .summary-section[data-section-kind='action'] h3::before { background: #2d8659; }
+    .summary-overview,
+    .summary-list,
+    .summary-table { color: #263946; font-weight: 700; line-height: 1.62; }
+    .guidance-text { color: #9aa8b2; font-weight: 400; }
+    .summary-overview { margin: 0; }
+    .summary-list { margin: 0; padding-left: 20px; }
+    .summary-list li + li { margin-top: 8px; }
+    .summary-table { width: 100%; border-collapse: collapse; overflow-wrap: anywhere; font-size: 0.92rem; }
+    .summary-table th,
+    .summary-table td { border: 1px solid #d9e4ea; padding: 9px; vertical-align: top; }
+    .summary-table th { background: #edf4f7; color: #142630; font-weight: 950; text-align: left; }
+    @page { margin: 16mm; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } main { padding: 0; } }
+  `;
 }
 
 function escapeHtml(value) {

@@ -44,3 +44,12 @@ test('client uploads audio through storage before transcribing', async () => {
   assert.match(app, /storagePath/);
   assert.match(app, /normalizeAudioMimeType/);
 });
+
+test('PDF export reuses rendered meeting result format', async () => {
+  const app = await readFile('src/app.js', 'utf8');
+
+  assert.match(app, /cloneSummaryForPrint/);
+  assert.match(app, /createPrintableStyle/);
+  assert.match(app, /summary-section/);
+  assert.match(app, /summary-table/);
+});
