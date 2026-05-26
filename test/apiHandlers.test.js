@@ -145,7 +145,7 @@ test('summarize API separates category extraction from minutes writing for long 
     const prompt = body.contents[0].parts[0].text;
     prompts.push(prompt);
 
-    if (prompts.length === 1) {
+    if (prompts.length <= 2) {
       return jsonResponse({
         candidates: [
           {
@@ -255,9 +255,10 @@ test('summarize API separates category extraction from minutes writing for long 
 
   assert.equal(response.statusCode, 200);
   const summary = JSON.parse(response.body);
-  assert.equal(prompts.length, 2);
+  assert.equal(prompts.length, 3);
   assert.match(prompts[0], /1차 카테고리/);
-  assert.match(prompts[1], /1차 카테고리 추출 결과/);
+  assert.match(prompts[1], /1\.5/);
+  assert.match(prompts[2], /1\.5/);
   assert.equal(summary.sections.length, 6);
   assert.equal(summary.sections[3].title, '검토 대안');
 
@@ -327,10 +328,11 @@ test('summarize API retries Gemini 503 with fallback model', async () => {
       { title: '회의 주요내용', items: ['fallback key point'], type: 'list' },
     ],
   });
-  assert.equal(urls.length, 3);
+  assert.equal(urls.length, 4);
   assert.match(urls[0], /gemini-2\.5-flash/);
   assert.match(urls[1], /gemini-2\.5-flash-lite/);
   assert.match(urls[2], /gemini-2\.5-flash-lite/);
+  assert.match(urls[3], /gemini-2\.5-flash-lite/);
 
   restoreEnv('LLM_PROVIDER', originalProvider);
   restoreEnv('GEMINI_API_KEY', originalKey);

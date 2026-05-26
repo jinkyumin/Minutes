@@ -31,10 +31,11 @@ async function summarizeWithOpenAI(body, transcript, note) {
   }
 
   const categories = await extractCategoriesWithOpenAI(body, transcript, note);
-  const summary = await writeMinutesWithOpenAI(body, transcript, note, categories);
+  const verifiedCategories = await verifyCategoriesWithOpenAI(body, transcript, note, categories);
+  const summary = await writeMinutesWithOpenAI(body, transcript, note, verifiedCategories);
 
   if (isWeakSummary(summary, transcript, note)) {
-    return retryOpenAiSummary(body, transcript, note, summary, categories);
+    return retryOpenAiSummary(body, transcript, note, summary, verifiedCategories);
   }
 
   return summary;
@@ -66,6 +67,45 @@ async function extractCategoriesWithOpenAI(body, transcript, note) {
         {
           role: 'user',
           content: buildCategorizationPrompt(body, transcript, note),
+        },
+      ],
+    }),
+  });
+
+  if (!openAiResponse.ok) {
+    throw new Error(await openAiResponse.text());
+  }
+
+  const data = await openAiResponse.json();
+  return normalizeCategories(parseOpenAiOutput(data));
+}
+
+async function verifyCategoriesWithOpenAI(body, transcript, note, categories) {
+  const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: resolveOpenAiModel(process.env.OPENAI_MODEL),
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'meeting_categories_review',
+          strict: true,
+          schema: categoryJsonSchema(),
+        },
+      },
+      input: [
+        {
+          role: 'system',
+          content:
+            'You verify Korean meeting category extraction against transcript evidence. Return only strict JSON with refined categories.',
+        },
+        {
+          role: 'user',
+          content: buildCategoryReviewPrompt(body, transcript, note, categories),
         },
       ],
     }),
@@ -139,9 +179,10 @@ async function summarizeWithGemini(body, transcript, note) {
     }
 
     const categories = parseGeminiCategories(await fallbackCategoryResponse.json());
-    const fallbackSummary = await writeMinutesWithGemini(fallbackModel, body, transcript, note, categories);
+    const verifiedCategories = await verifyCategoriesWithGemini(fallbackModel, body, transcript, note, categories);
+    const fallbackSummary = await writeMinutesWithGemini(fallbackModel, body, transcript, note, verifiedCategories);
     return isWeakSummary(fallbackSummary, transcript, note)
-      ? retryGeminiSummary(fallbackModel, body, transcript, note, fallbackSummary, categories)
+      ? retryGeminiSummary(fallbackModel, body, transcript, note, fallbackSummary, verifiedCategories)
       : fallbackSummary;
   }
 
@@ -150,10 +191,11 @@ async function summarizeWithGemini(body, transcript, note) {
   }
 
   const categories = parseGeminiCategories(await categoryResponse.json());
-  const summary = await writeMinutesWithGemini(model, body, transcript, note, categories);
+  const verifiedCategories = await verifyCategoriesWithGemini(model, body, transcript, note, categories);
+  const summary = await writeMinutesWithGemini(model, body, transcript, note, verifiedCategories);
 
   if (isWeakSummary(summary, transcript, note)) {
-    return retryGeminiSummary(model, body, transcript, note, summary, categories);
+    return retryGeminiSummary(model, body, transcript, note, summary, verifiedCategories);
   }
 
   return summary;
@@ -222,6 +264,16 @@ async function requestGeminiCategories(model, body, transcript, note) {
   );
 }
 
+async function verifyCategoriesWithGemini(model, body, transcript, note, categories) {
+  const response = await requestGeminiCategoryReview(model, body, transcript, note, categories);
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return parseGeminiCategories(await response.json());
+}
+
 async function requestGeminiSummary(model, body, transcript, note, categories, options = {}) {
   return fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -279,6 +331,52 @@ async function requestGeminiSummary(model, body, transcript, note, categories, o
   );
 }
 
+async function requestGeminiCategoryReview(model, body, transcript, note, categories) {
+  return fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        generationConfig: {
+          temperature: 0,
+          topP: 0.8,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'OBJECT',
+            properties: {
+              categories: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    title: { type: 'STRING' },
+                    items: {
+                      type: 'ARRAY',
+                      items: { type: 'STRING' },
+                    },
+                  },
+                  required: ['title', 'items'],
+                },
+              },
+            },
+            required: ['categories'],
+          },
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: buildCategoryReviewPrompt(body, transcript, note, categories) }],
+          },
+        ],
+      }),
+    },
+  );
+}
+
 function buildCategorizationPrompt(body, transcript, note) {
   return [
     '1차 카테고리 추출 단계입니다.',
@@ -305,6 +403,33 @@ function buildCategorizationPrompt(body, transcript, note) {
   ].join('\n');
 }
 
+function buildCategoryReviewPrompt(body, transcript, note, categories) {
+  return [
+    '1.5차 누락/중복/근거 검증 단계입니다.',
+    '아래 1차 카테고리 추출 결과를 전사문과 Note에 대조해 검증하세요.',
+    '반드시 JSON만 반환하세요.',
+    'JSON schema: {"categories":[{"title":"string","items":["string"]}]}',
+    '',
+    '검증 규칙:',
+    '- 전사문 또는 Note에서 근거를 찾을 수 없는 항목은 제거하세요.',
+    '- 같은 의미의 항목은 하나로 합치고 더 구체적인 표현을 남기세요.',
+    '- 1차 결과에서 빠진 중요 사실, 일정, 숫자, 담당 조직, 리스크, 액션아이템이 있으면 추가하세요.',
+    '- 카테고리명이 겹치거나 너무 추상적이면 업무 회의록에 적합한 이름으로 정리하세요.',
+    '- 최종 회의록 작성자가 그대로 사용할 수 있게 명사형/메모형 항목으로 정리하세요.',
+    '- 추측으로 내용을 보강하지 말고, 전사문 또는 Note의 실제 내용만 사용하세요.',
+    '',
+    `1차 카테고리 추출 결과:\n${formatCategoriesForPrompt(categories)}`,
+    '',
+    `회의 제목: ${body.title || '미입력'}`,
+    `회의 일시: ${body.meetingDateTime || '미입력'}`,
+    `참석자: ${body.attendees || '미입력'}`,
+    '',
+    `Note:\n${note || '없음'}`,
+    '',
+    `전사:\n${transcript || '없음'}`,
+  ].join('\n');
+}
+
 function buildMinutesPrompt(body, transcript, note, categories, options = {}) {
   return [
     ...(options.retry
@@ -317,7 +442,7 @@ function buildMinutesPrompt(body, transcript, note, categories, options = {}) {
       : []),
     '다음 한국어 회의 내용을 업무용 회의록 문서로 정리하세요.',
     '2차 회의록 작성 단계입니다.',
-    '아래 1차 카테고리 추출 결과를 우선 근거로 사용하고, 필요 시 원문 전사를 보조 근거로 사용하세요.',
+    '아래 1.5차 검증 완료 카테고리 결과를 우선 근거로 사용하고, 필요 시 원문 전사를 보조 근거로 사용하세요.',
     '반드시 JSON만 반환하세요.',
     'JSON schema: {"title":"string","overview":"string","keyPoints":["string"],"actionItems":["string"],"sections":[{"title":"string","items":["string"],"type":"paragraph|list"}]}',
     '',
@@ -368,7 +493,7 @@ function buildMinutesPrompt(body, transcript, note, categories, options = {}) {
     '- 예: "농협VAN 사용을 요구했다" 금지. "농협VAN 사용 요구" 또는 "농협VAN 사용 요구 확인" 권장.',
     '- 예: "리스크가 있다" 금지. "리스크 있음" 권장.',
     '',
-    `1차 카테고리 추출 결과:\n${formatCategoriesForPrompt(categories)}`,
+    `1.5차 검증 완료 카테고리 결과:\n${formatCategoriesForPrompt(categories)}`,
     '',
     `회의 제목: ${body.title || '미입력'}`,
     `회의 일시: ${body.meetingDateTime || '미입력'}`,
